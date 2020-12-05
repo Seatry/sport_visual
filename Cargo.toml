@@ -1,0 +1,44 @@
+[package]
+name = "sport_visual"
+version = "0.1.0"
+authors = ["Sokolov A.S."]
+
+[lib]
+name = "geometry_kernel"
+path = "src/lib.rs"
+
+
+[[bin]]
+name = "visual_main"
+path = "src/main.rs"
+
+# Профиль dev используется по умолчанию при вызове команды cargo build
+[profile.dev]
+debug = true  # Добавляет флаг `-g` для компилятора;
+opt-level = 0 # Отключаем оптимизацию кода;
+
+[dependencies]
+num = "0.1.39"
+rust-gmp = "0.5.0"
+time = "*"
+lazy_static = "*"
+bidir-map = "0.3.2"
+byteorder = "*"
+log = "*"
+rustc-test = "0.2.0"
+env_logger = "*"
+rulinalg = "0.4.1"
+glium = "*"
+glm = "*"
+csv = "1.1"
+image = "*"
+gdk = "0.7.0"
+epoxy = "0.0.3"
+shared_library = "0.1.7"
+libc = "0.1"
+glib = "0.4.0"
+nalgebra = "*"
+plotlib = "*"
+[dependencies.gtk]
+version = "0.3.0"
+features = ["v3_18"]
