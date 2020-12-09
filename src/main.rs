@@ -727,13 +727,24 @@ fn main() {
     animation_progress_box.add(&animation_progress);
     animation_progress_box.set_border_width(5);
 
+    let anime_control_box = gtk::Box::new(gtk::Orientation::Horizontal, 5);
+    let video_back_button = gtk::Button::new_from_icon_name("media-seek-backward", 0);
+    let pause_button = gtk::Button::new_from_icon_name("media-playback-pause", 0);
+    let start_button = gtk::Button::new_from_icon_name("media-playback-start", 0);
+    let video_forward_button = gtk::Button::new_from_icon_name("media-seek-forward", 0);
+    anime_control_box.pack_start(&video_back_button, true, true, 3);
+    anime_control_box.pack_start(&pause_button, true, true, 0);
+    anime_control_box.pack_start(&start_button, true, true, 0);
+    anime_control_box.pack_start(&video_forward_button, true, true, 3);
+    start_button.set_sensitive(false);
+
     let csv_button = gtk::FileChooserButton::new("load animation", gtk::FileChooserAction::Open);
     csv_button.set_width_chars(19);
     let csv_dialog_filter = gtk::FileFilter::new();
     csv_dialog_filter.add_pattern("*.txt");
     csv_dialog_filter.set_name("*.txt");
     csv_button.add_filter(&csv_dialog_filter);
-    csv_button.connect_file_set(clone!(state, animation_progress; |csv_button| {
+    csv_button.connect_file_set(clone!(state, animation_progress, start_button, pause_button; |csv_button| {
         let mut state = state.borrow_mut();
         let state = state.as_mut().unwrap();
 
@@ -818,14 +829,65 @@ fn main() {
         state.arx = state.rx;
         state.ary = state.ry;
         state.arz = state.rz;
+
+        start_button.set_sensitive(false);
+        start_button.set_visible(false);
+        pause_button.set_sensitive(true);
+        pause_button.set_visible(true);
         animation_progress.set_visible(true);
     }));
+
     let csv_box = gtk::Box::new(gtk::Orientation::Vertical, 1);
     let csv_label = gtk::Label::new("Animation-file");
     csv_box.add(&csv_label);
     csv_box.add(&csv_button);
 
+    pause_button.connect_clicked(clone!(state, start_button; |pause_button| {
+        let mut state = state.borrow_mut();
+        let state = state.as_mut().unwrap();
+
+        match state.is_anime {
+            true => {
+                state.is_anime = false;
+                start_button.set_sensitive(true);
+                start_button.set_visible(true);
+                pause_button.set_sensitive(false);
+                pause_button.set_visible(false);
+            },
+            false => {},
+        }
+    }));
+
+    start_button.connect_clicked(clone!(state, pause_button; |start_button| {
+        let mut state = state.borrow_mut();
+        let state = state.as_mut().unwrap();
+
+        start_button.set_sensitive(false);
+        start_button.set_visible(false);
+        pause_button.set_sensitive(true);
+        pause_button.set_visible(true);
+
+        state.is_anime = true;
+    }));
+
+    video_forward_button.connect_clicked(clone!(state, start_button; |_video_forward_button| {
+        let mut state = state.borrow_mut();
+        let state = state.as_mut().unwrap();
+        if state.is_anime || start_button.is_sensitive() {
+            let cond_mem = state.is_anime;
+            state.is_anime = false;
+
+            let n = 50 * 10; // 10 sec
+            for _i in 0..n {
+                state.anime_list.pop_front();
+            }
+
+            state.is_anime = cond_mem;
+        }
+    }));
+
     animation_box.add(&csv_box);
+    animation_box.add(&anime_control_box);
     animation_box.add(&animation_progress_box);
 
     let open_texture = gtk::FileChooserButton::new("load texture", gtk::FileChooserAction::Open);
@@ -934,6 +996,7 @@ fn main() {
     glarea.set_visible(true);
     progress.set_visible(false);
     animation_progress.set_visible(false);
+    start_button.set_visible(false);
 
     gtk::timeout_add(1, clone!(glarea; || {
         glarea.queue_render();
