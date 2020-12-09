@@ -24,7 +24,7 @@ use std::io::Cursor;
 use std::ptr;
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::collections::LinkedList;
+use std::vec::Vec;
 
 use self::gtk::traits::*;
 use self::gtk::Inhibit;
@@ -224,7 +224,8 @@ fn main() {
         is_light: bool, is_texture: bool,
         int: f32, amb: f32, diff: f32, spec: f32,
         back_color : gdk::RGBA, model_color : gdk::RGBA,
-        anime_list: LinkedList<(f32, f32, f32, f32)>,
+        anime_list: Vec<(f32, f32, f32, f32)>,
+        al_ind: usize,
         is_anime: bool,
         arx: f32, ary: f32, arz: f32,
     }
@@ -368,7 +369,8 @@ fn main() {
     let back_color = gdk::RGBA{red : 0.0, green : 0.0, blue : 0.0, alpha : 1.0};
     let model_color = gdk::RGBA{red : 1.0, green : 1.0, blue : 1.0, alpha : 1.0};
     let is_anime = false;
-    let anime_list: LinkedList<(f32, f32, f32, f32)> = LinkedList::new();
+    let anime_list: Vec<(f32, f32, f32, f32)> = Vec::new();
+    let al_ind = 0;
 
     *state = Some(State {
         display: display,
@@ -386,6 +388,7 @@ fn main() {
         int : int, amb : amb, diff : diff, spec : spec,
         back_color : back_color, model_color : model_color,
         anime_list: anime_list,
+        al_ind: al_ind,
         is_anime: is_anime,
         arx: 0.0f32, ary: 0.0f32, arz: 0.0f32,
          });
@@ -754,7 +757,7 @@ fn main() {
         let file = File::open(path_str).unwrap();
         let mut iter = std::io::BufReader::new(file).lines();
 
-        let mut list: LinkedList<(f32, f32, f32, f32)> = LinkedList::new();
+        let mut list: Vec<(f32, f32, f32, f32)> = Vec::new();
         let mut madgwick = Madgwick::new(0.03);
         let to_rad = (PI / 180.0) as f64;
         let to_degree = 180.0 / PI;
@@ -800,7 +803,7 @@ fn main() {
             ];
             madgwick.update(&gyro, &accel, &mag, dtime);
             let (roll, pitch, yaw, _q_z) = madgwick.q.to_euler_angles();
-            list.push_back((pitch*to_degree, yaw*to_degree, roll*to_degree, dtime as f32));
+            list.push((pitch*to_degree, yaw*to_degree, roll*to_degree, dtime as f32));
             yaws.push((time, (yaw*to_degree) as f64));
             pitches.push((time, (pitch*to_degree) as f64));
             rolls.push((time, (roll*to_degree) as f64));
@@ -825,6 +828,7 @@ fn main() {
         Page::single(&v).save(path_str.replace(".txt", ".svg")).unwrap();
 
         state.anime_list = list;
+        state.al_ind = 0;
         state.is_anime = true;
         state.arx = state.rx;
         state.ary = state.ry;
@@ -879,7 +883,26 @@ fn main() {
 
             let n = 50 * 10; // 10 sec
             for _i in 0..n {
-                state.anime_list.pop_front();
+                state.al_ind += 1;
+            }
+
+            state.is_anime = cond_mem;
+        }
+    }));
+
+    video_back_button.connect_clicked(clone!(state, start_button; |_video_back_button| {
+        let mut state = state.borrow_mut();
+        let state = state.as_mut().unwrap();
+        if state.is_anime || start_button.is_sensitive() {
+            let cond_mem = state.is_anime;
+            state.is_anime = false;
+
+            let n = 50 * 10; // 10 sec
+            for _i in 0..n {
+                if state.al_ind == 0 {
+                    break;
+                }
+                state.al_ind -= 1;
             }
 
             state.is_anime = cond_mem;
@@ -1016,15 +1039,15 @@ fn main() {
         let state = state.as_mut().unwrap();
         if state.is_anime {
             animation_progress.pulse();
-            let angles_wrapped = state.anime_list.pop_front();
-            if angles_wrapped.is_none() {
+            if state.al_ind >= state.anime_list.len() {
                 state.is_anime = false;
                 animation_progress.set_visible(false);
             } else {
-                let angles = angles_wrapped.unwrap();
+                let angles = state.anime_list[state.al_ind];
                 state.rx = angles.0 + state.arx;
                 state.ry = angles.1 + state.ary;
                 state.rz = angles.2 + state.arz;
+                state.al_ind += 1;
             }
         }
         glarea.queue_render();
