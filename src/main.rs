@@ -551,6 +551,9 @@ fn main() {
     area_box.add(&scale_box);
     scale_box.set_hexpand(true);
     scale_box.set_vexpand(false);
+    scale_box.set_border_width(5);
+
+    let scroll_video_button = gtk::Scale::new(gtk::Orientation::Horizontal, None);
 
     let progress = gtk::ProgressBar::new();
     progress.set_text("MODEL LOADING");
@@ -561,6 +564,8 @@ fn main() {
     area_box.add(&progress_box);
     progress_box.set_hexpand(true);
     progress_box.set_vexpand(false);
+
+    progress_box.add(&scroll_video_button);
     progress_box.add(&progress);
     progress_box.set_border_width(5);
 
@@ -643,6 +648,7 @@ fn main() {
         state.scale = scale_button.get_value() as f32;
         glarea.queue_render();
     }));
+
 
     let color_button = gtk::ColorButton::new_with_rgba(
         &gdk::RGBA{red : 1.0, green : 1.0, blue : 1.0, alpha : 1.0});
@@ -747,7 +753,7 @@ fn main() {
     csv_dialog_filter.add_pattern("*.txt");
     csv_dialog_filter.set_name("*.txt");
     csv_button.add_filter(&csv_dialog_filter);
-    csv_button.connect_file_set(clone!(state, animation_progress, start_button, pause_button; |csv_button| {
+    csv_button.connect_file_set(clone!(state, animation_progress, start_button, pause_button, scroll_video_button; |csv_button| {
         let mut state = state.borrow_mut();
         let state = state.as_mut().unwrap();
 
@@ -839,7 +845,31 @@ fn main() {
         pause_button.set_sensitive(true);
         pause_button.set_visible(true);
         animation_progress.set_visible(true);
+        scroll_video_button.set_visible(true);
+        scroll_video_button.set_sensitive(true);
+        scroll_video_button.set_range(0.0, state.anime_list.len() as f64);
+        scroll_video_button.set_increments((state.anime_list.len() as f64 / 100.0).ceil(), 0.0);
+        scroll_video_button.set_value(0.0);
     }));
+
+    scroll_video_button.connect_format_value(move |scroll_video_button, _|{
+        let mut seconds = (scroll_video_button.get_value() / 50.0).ceil();
+        let minutes = (seconds / 60.0).floor();
+        seconds = seconds % 60.0;
+        return format!("{}:{}", minutes, seconds);
+    });
+
+//    scroll_video_button.connect_value_changed(clone!(state; |scroll_video_button| {
+//        println!("HELLLLLLO");
+//        println!("{}", scroll_video_button.get_value().ceil());
+//        let mut state = state.borrow_mut();
+//        let state = state.as_mut().unwrap();
+//        println!("HELLLLLLO2");
+//        let value = scroll_video_button.get_value().ceil();
+//        println!("HELLLLLLO3");
+//        state.al_ind = value as usize;
+//        println!("HELLLLLLO4");
+//    }));
 
     let csv_box = gtk::Box::new(gtk::Orientation::Vertical, 1);
     let csv_label = gtk::Label::new("Animation-file");
@@ -874,38 +904,21 @@ fn main() {
         state.is_anime = true;
     }));
 
-    video_forward_button.connect_clicked(clone!(state, start_button; |_video_forward_button| {
+    video_forward_button.connect_clicked(clone!(state, start_button, scroll_video_button; |_video_forward_button| {
         let mut state = state.borrow_mut();
         let state = state.as_mut().unwrap();
         if state.is_anime || start_button.is_sensitive() {
-            let cond_mem = state.is_anime;
-            state.is_anime = false;
-
-            let n = 50 * 10; // 10 sec
-            for _i in 0..n {
-                state.al_ind += 1;
-            }
-
-            state.is_anime = cond_mem;
+            let n = 50.0 * 10.0; // 10 sec
+            scroll_video_button.set_value(scroll_video_button.get_value() + n);
         }
     }));
 
-    video_back_button.connect_clicked(clone!(state, start_button; |_video_back_button| {
+    video_back_button.connect_clicked(clone!(state, start_button, scroll_video_button; |_video_back_button| {
         let mut state = state.borrow_mut();
         let state = state.as_mut().unwrap();
         if state.is_anime || start_button.is_sensitive() {
-            let cond_mem = state.is_anime;
-            state.is_anime = false;
-
-            let n = 50 * 10; // 10 sec
-            for _i in 0..n {
-                if state.al_ind == 0 {
-                    break;
-                }
-                state.al_ind -= 1;
-            }
-
-            state.is_anime = cond_mem;
+            let n = 50.0 * 10.0; // 10 sec
+            scroll_video_button.set_value(scroll_video_button.get_value() - n);
         }
     }));
 
@@ -1021,6 +1034,9 @@ fn main() {
     animation_progress.set_visible(false);
     start_button.set_visible(false);
 
+    scroll_video_button.set_visible(false);
+    scroll_video_button.set_sensitive(false);
+
     gtk::timeout_add(1, clone!(glarea; || {
         glarea.queue_render();
         return glib::Continue(true);
@@ -1034,20 +1050,23 @@ fn main() {
         }
         return glib::Continue(true);
     }));
-    gtk::timeout_add(20, clone!(glarea, state; || {
+    gtk::timeout_add(20, clone!(glarea, state, scroll_video_button; || {
         let mut state = state.borrow_mut();
         let state = state.as_mut().unwrap();
         if state.is_anime {
             animation_progress.pulse();
-            if state.al_ind >= state.anime_list.len() {
+            let ind = scroll_video_button.get_value() as usize;
+            if ind >= state.anime_list.len() {
                 state.is_anime = false;
                 animation_progress.set_visible(false);
+                scroll_video_button.set_visible(false);
+                scroll_video_button.set_sensitive(false);
             } else {
-                let angles = state.anime_list[state.al_ind];
+                let angles = state.anime_list[ind];
                 state.rx = angles.0 + state.arx;
                 state.ry = angles.1 + state.ary;
                 state.rz = angles.2 + state.arz;
-                state.al_ind += 1;
+                scroll_video_button.set_value(ind as f64 + 1.0);
             }
         }
         glarea.queue_render();
