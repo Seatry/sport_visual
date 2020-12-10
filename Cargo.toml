@@ -32,13 +32,14 @@ glium = "*"
 glm = "*"
 csv = "1.1"
 image = "*"
-gdk = "0.7.0"
+gdk = "0.10.0"
 epoxy = "0.0.3"
 shared_library = "0.1.7"
 libc = "0.1"
-glib = "0.4.0"
+glib = "0.7.0"
 nalgebra = "*"
 plotlib = "*"
+gst = {package = "gstreamer"}
 [dependencies.gtk]
-version = "0.3.0"
+version = "0.6.0"
 features = ["v3_18"]

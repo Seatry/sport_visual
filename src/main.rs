@@ -11,6 +11,9 @@ extern crate csv;
 extern crate geometry_kernel;
 extern crate glib;
 extern crate plotlib;
+extern crate gst;
+use gst::prelude::*;
+
 
 mod madgwick;
 
@@ -124,7 +127,21 @@ fn make_model(path : &str) -> (Vec<VertexModel>, (f32, f32, f32, f32)){
         })
     }
     return (normalize_model, (0.0, 0.0, 0.0, 1.0 / maximum));
-//    return (model, (delta_x, delta_y, delta_z, 1.0 / maximum));
+}
+
+fn run_video() -> (std::option::Option<gst::Element>, std::option::Option<gst::Bus>) {
+    gst::init().unwrap();
+    let uri = "file:///home/alexander/IdeaProjects/sport_visual/animations/test.mp4";
+    let playbin = gst::ElementFactory::make("playbin", None).unwrap();
+    playbin.set_property("uri", &uri).unwrap();
+
+    let bus = playbin.get_bus().unwrap();
+
+    playbin
+        .set_state(gst::State::Playing)
+        .expect("Unable to set the pipeline to the `Playing` state");
+
+    return (Some(playbin), Some(bus));
 }
 
 struct ModelState {
@@ -228,6 +245,8 @@ fn main() {
         al_ind: usize,
         is_anime: bool,
         arx: f32, ary: f32, arz: f32,
+        playbin: std::option::Option<gst::Element>,
+        bus: std::option::Option<gst::Bus>,
     }
 
     let state: Rc<RefCell<Option<State>>> = Rc::new(RefCell::new(None));
@@ -391,6 +410,8 @@ fn main() {
         al_ind: al_ind,
         is_anime: is_anime,
         arx: 0.0f32, ary: 0.0f32, arz: 0.0f32,
+        playbin: None,
+        bus: None,
          });
     }));
     let model = make_model("/home/alexander/IdeaProjects/sport_visual/models/union.stl");
@@ -553,7 +574,7 @@ fn main() {
     scale_box.set_vexpand(false);
     scale_box.set_border_width(5);
 
-    let scroll_video_button = gtk::Scale::new(gtk::Orientation::Horizontal, None);
+    let scroll_video_button = gtk::Scale::new_with_range(gtk::Orientation::Horizontal, 0.0, 1.0, 0.05);
 
     let progress = gtk::ProgressBar::new();
     progress.set_text("MODEL LOADING");
@@ -737,10 +758,10 @@ fn main() {
     animation_progress_box.set_border_width(5);
 
     let anime_control_box = gtk::Box::new(gtk::Orientation::Horizontal, 5);
-    let video_back_button = gtk::Button::new_from_icon_name("media-seek-backward", 0);
-    let pause_button = gtk::Button::new_from_icon_name("media-playback-pause", 0);
-    let start_button = gtk::Button::new_from_icon_name("media-playback-start", 0);
-    let video_forward_button = gtk::Button::new_from_icon_name("media-seek-forward", 0);
+    let video_back_button = gtk::Button::new_from_icon_name("media-seek-backward", gtk::IconSize::__Unknown(0));
+    let pause_button = gtk::Button::new_from_icon_name("media-playback-pause", gtk::IconSize::__Unknown(0));
+    let start_button = gtk::Button::new_from_icon_name("media-playback-start", gtk::IconSize::__Unknown(0));
+    let video_forward_button = gtk::Button::new_from_icon_name("media-seek-forward", gtk::IconSize::__Unknown(0));
     anime_control_box.pack_start(&video_back_button, true, true, 3);
     anime_control_box.pack_start(&pause_button, true, true, 0);
     anime_control_box.pack_start(&start_button, true, true, 0);
@@ -753,6 +774,8 @@ fn main() {
     csv_dialog_filter.add_pattern("*.txt");
     csv_dialog_filter.set_name("*.txt");
     csv_button.add_filter(&csv_dialog_filter);
+
+
     csv_button.connect_file_set(clone!(state, animation_progress, start_button, pause_button, scroll_video_button; |csv_button| {
         let mut state = state.borrow_mut();
         let state = state.as_mut().unwrap();
@@ -850,6 +873,15 @@ fn main() {
         scroll_video_button.set_range(0.0, state.anime_list.len() as f64);
         scroll_video_button.set_increments((state.anime_list.len() as f64 / 100.0).ceil(), 0.0);
         scroll_video_button.set_value(0.0);
+
+        if state.playbin.is_some() {
+            state.playbin.as_ref().unwrap().set_state(gst::State::Null).unwrap();
+        }
+
+        let (playbin, bus) = run_video();
+        state.playbin = playbin;
+        state.bus = bus;
+
     }));
 
     scroll_video_button.connect_format_value(move |scroll_video_button, _|{
@@ -860,15 +892,13 @@ fn main() {
     });
 
 //    scroll_video_button.connect_value_changed(clone!(state; |scroll_video_button| {
-//        println!("HELLLLLLO");
-//        println!("{}", scroll_video_button.get_value().ceil());
 //        let mut state = state.borrow_mut();
 //        let state = state.as_mut().unwrap();
-//        println!("HELLLLLLO2");
-//        let value = scroll_video_button.get_value().ceil();
-//        println!("HELLLLLLO3");
-//        state.al_ind = value as usize;
-//        println!("HELLLLLLO4");
+//        let seconds = (scroll_video_button.get_value() / 50.0).ceil();
+//        if state.playbin.as_ref().unwrap().seek_simple(gst::SeekFlags::FLUSH | gst::SeekFlags::KEY_UNIT,
+//            seconds as u64 * gst::SECOND,).is_err() {
+//                eprintln!("Seekition to {} failed", seconds);
+//            }
 //    }));
 
     let csv_box = gtk::Box::new(gtk::Orientation::Vertical, 1);
@@ -887,6 +917,7 @@ fn main() {
                 start_button.set_visible(true);
                 pause_button.set_sensitive(false);
                 pause_button.set_visible(false);
+                state.playbin.as_ref().unwrap().change_state(gst::StateChange::PlayingToPaused).unwrap();
             },
             false => {},
         }
@@ -901,6 +932,8 @@ fn main() {
         pause_button.set_sensitive(true);
         pause_button.set_visible(true);
 
+        state.playbin.as_ref().unwrap().change_state(gst::StateChange::PausedToPlaying).unwrap();
+
         state.is_anime = true;
     }));
 
@@ -909,7 +942,13 @@ fn main() {
         let state = state.as_mut().unwrap();
         if state.is_anime || start_button.is_sensitive() {
             let n = 50.0 * 10.0; // 10 sec
+            state.al_ind += n as usize;
+            let seconds = (scroll_video_button.get_value() / 50.0).ceil() as u64 + 10;
             scroll_video_button.set_value(scroll_video_button.get_value() + n);
+            if state.playbin.as_ref().unwrap().seek_simple(gst::SeekFlags::FLUSH | gst::SeekFlags::KEY_UNIT,
+            seconds as u64 * gst::SECOND,).is_err() {
+                eprintln!("Seekition to {} failed", seconds);
+            }
         }
     }));
 
@@ -918,7 +957,22 @@ fn main() {
         let state = state.as_mut().unwrap();
         if state.is_anime || start_button.is_sensitive() {
             let n = 50.0 * 10.0; // 10 sec
+            if state.al_ind < n as usize {
+                state.al_ind = 0;
+            } else {
+                state.al_ind -= n as usize;
+            }
+            let mut seconds = (scroll_video_button.get_value() / 50.0).ceil() as u64;
             scroll_video_button.set_value(scroll_video_button.get_value() - n);
+            if seconds < 10 {
+                seconds = 0;
+            } else {
+                seconds -= 10;
+            }
+            if state.playbin.as_ref().unwrap().seek_simple(gst::SeekFlags::FLUSH | gst::SeekFlags::KEY_UNIT,
+            seconds as u64 * gst::SECOND,).is_err() {
+                eprintln!("Seekition to {} failed", seconds);
+            }
         }
     }));
 
@@ -1053,20 +1107,59 @@ fn main() {
     gtk::timeout_add(20, clone!(glarea, state, scroll_video_button; || {
         let mut state = state.borrow_mut();
         let state = state.as_mut().unwrap();
+
+        if state.bus.is_some() {
+            let msg = state.bus.as_ref().unwrap().pop();
+            use gst::MessageView;
+
+            if msg.is_some() {
+                let msg = msg.unwrap();
+
+                match msg.view() {
+                    MessageView::Eos(..) => {
+                        state.playbin.as_ref().unwrap().set_state(gst::State::Null).unwrap();
+                        ();
+                    },
+                    MessageView::Error(err) => {
+                        state.playbin.as_ref().unwrap().set_state(gst::State::Null).unwrap();
+
+                        println!(
+                            "Error from {:?}: {} ({:?})",
+                            err.get_src().map(|s| s.get_path_string()),
+                            err.get_error(),
+                            err.get_debug()
+                        );
+                    }
+                    _ => (),
+                };
+            }
+
+        }
+
         if state.is_anime {
             animation_progress.pulse();
             let ind = scroll_video_button.get_value() as usize;
+            if state.al_ind != ind {
+                let seconds = (scroll_video_button.get_value() / 50.0).ceil() as u64 + 10;
+                if state.playbin.as_ref().unwrap().seek_simple(gst::SeekFlags::FLUSH | gst::SeekFlags::KEY_UNIT,
+                seconds as u64 * gst::SECOND,).is_err() {
+                    eprintln!("Seekition to {} failed", seconds);
+                }
+            }
             if ind >= state.anime_list.len() {
                 state.is_anime = false;
                 animation_progress.set_visible(false);
                 scroll_video_button.set_visible(false);
                 scroll_video_button.set_sensitive(false);
+                state.playbin.as_ref().unwrap().set_state(gst::State::Null).unwrap();
+
             } else {
                 let angles = state.anime_list[ind];
                 state.rx = angles.0 + state.arx;
                 state.ry = angles.1 + state.ary;
                 state.rz = angles.2 + state.arz;
                 scroll_video_button.set_value(ind as f64 + 1.0);
+                state.al_ind = ind + 1;
             }
         }
         glarea.queue_render();
