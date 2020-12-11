@@ -129,9 +129,8 @@ fn make_model(path : &str) -> (Vec<VertexModel>, (f32, f32, f32, f32)){
     return (normalize_model, (0.0, 0.0, 0.0, 1.0 / maximum));
 }
 
-fn run_video() -> (std::option::Option<gst::Element>, std::option::Option<gst::Bus>) {
+fn run_video(uri: &str) -> (std::option::Option<gst::Element>, std::option::Option<gst::Bus>) {
     gst::init().unwrap();
-    let uri = "file:///home/alexander/IdeaProjects/sport_visual/animations/test.mp4";
     let playbin = gst::ElementFactory::make("playbin", None).unwrap();
     playbin.set_property("uri", &uri).unwrap();
 
@@ -878,7 +877,7 @@ fn main() {
             state.playbin.as_ref().unwrap().set_state(gst::State::Null).unwrap();
         }
 
-        let (playbin, bus) = run_video();
+        let (playbin, bus) = run_video(&(std::string::String::from("file://") + &path_str.replace(".txt", ".mp4")));
         state.playbin = playbin;
         state.bus = bus;
 
