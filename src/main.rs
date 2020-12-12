@@ -1164,6 +1164,7 @@ fn main() {
         }
         return glib::Continue(true);
     }));
+
     gtk::timeout_add(17, clone!(glarea, state, scroll_video_button; || {
         let mut state = state.borrow_mut();
         let state = state.as_mut().unwrap();
@@ -1200,7 +1201,7 @@ fn main() {
             animation_progress.pulse();
             let ind = scroll_video_button.get_value() as usize;
             if state.al_ind != ind {
-                let seconds = (scroll_video_button.get_value() / 50.0).ceil() as u64 + 10;
+                let seconds = (scroll_video_button.get_value() / 50.0).ceil() as u64;
                 if state.playbin.as_ref().unwrap().seek_simple(gst::SeekFlags::FLUSH | gst::SeekFlags::KEY_UNIT,
                 seconds as u64 * gst::SECOND,).is_err() {
                     eprintln!("Seekition to {} failed", seconds);
