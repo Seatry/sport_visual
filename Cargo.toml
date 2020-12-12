@@ -40,6 +40,7 @@ glib = "0.7.0"
 nalgebra = "*"
 plotlib = "*"
 gst = {package = "gstreamer"}
+gst_video = {package = "gstreamer-video"}
 [dependencies.gtk]
 version = "0.6.0"
 features = ["v3_18"]

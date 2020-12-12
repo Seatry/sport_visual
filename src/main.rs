@@ -12,7 +12,12 @@ extern crate geometry_kernel;
 extern crate glib;
 extern crate plotlib;
 extern crate gst;
+extern crate gst_video;
+
 use gst::prelude::*;
+use gst_video::prelude::*;
+use std::process;
+use std::os::raw::c_void;
 
 
 mod madgwick;
@@ -774,8 +779,9 @@ fn main() {
     csv_dialog_filter.set_name("*.txt");
     csv_button.add_filter(&csv_dialog_filter);
 
+    let vbox = gtk::Box::new(gtk::Orientation::Horizontal, 0);
 
-    csv_button.connect_file_set(clone!(state, animation_progress, start_button, pause_button, scroll_video_button; |csv_button| {
+    csv_button.connect_file_set(clone!(state, animation_progress, start_button, vbox, pause_button, scroll_video_button; |csv_button| {
         let mut state = state.borrow_mut();
         let state = state.as_mut().unwrap();
 
@@ -875,11 +881,57 @@ fn main() {
 
         if state.playbin.is_some() {
             state.playbin.as_ref().unwrap().set_state(gst::State::Null).unwrap();
+            vbox.foreach(|w| {
+                vbox.remove(w);
+            })
         }
 
         let (playbin, bus) = run_video(&(std::string::String::from("file://") + &path_str.replace(".txt", ".mp4")));
         state.playbin = playbin;
         state.bus = bus;
+
+        let playbin = state.playbin.as_ref().unwrap();
+        use gdk::WindowExt;
+
+        let video_window = gtk::DrawingArea::new();
+
+        let video_overlay = playbin
+            .clone()
+            .dynamic_cast::<gst_video::VideoOverlay>()
+            .unwrap();
+
+        video_window.connect_realize(move |video_window| {
+            let video_overlay = &video_overlay;
+            let gdk_window = video_window.get_window().unwrap();
+
+            if !gdk_window.ensure_native() {
+                println!("Can't create native window for widget");
+                process::exit(-1);
+            }
+
+            let display_type_name = gdk_window.get_display().get_type().name();
+
+            // Check if we're using X11 or ...
+            if display_type_name == "GdkX11Display" {
+                extern "C" {
+                    pub fn gdk_x11_window_get_xid(
+                        window: *mut glib::object::GObject,
+                    ) -> *mut c_void;
+                }
+
+                #[allow(clippy::cast_ptr_alignment)]
+                    unsafe {
+                    let xid = gdk_x11_window_get_xid(gdk_window.as_ptr() as *mut _);
+                    video_overlay.set_window_handle(xid as usize);
+                }
+            } else {
+                println!("Add support for display type '{}'", display_type_name);
+                process::exit(-1);
+            }
+
+        });
+        vbox.pack_start(&video_window, true, true, 0);
+        vbox.show_all();
 
     }));
 
@@ -948,6 +1000,9 @@ fn main() {
             seconds as u64 * gst::SECOND,).is_err() {
                 eprintln!("Seekition to {} failed", seconds);
             }
+            if !state.is_anime {
+                state.playbin.as_ref().unwrap().set_state(gst::State::Paused).unwrap();
+            }
         }
     }));
 
@@ -971,6 +1026,9 @@ fn main() {
             if state.playbin.as_ref().unwrap().seek_simple(gst::SeekFlags::FLUSH | gst::SeekFlags::KEY_UNIT,
             seconds as u64 * gst::SECOND,).is_err() {
                 eprintln!("Seekition to {} failed", seconds);
+            }
+            if !state.is_anime {
+                state.playbin.as_ref().unwrap().set_state(gst::State::Paused).unwrap();
             }
         }
     }));
@@ -1075,6 +1133,7 @@ fn main() {
     button_box.add(&lightning_frame);
     button_box.add(&animation_frame);
     area_sub_box.add(&glarea);
+    area_sub_box.add(&vbox);
     hbox.add(&button_box);
     scale_box.add(&scale_button);
     hbox.add(&area_box);
@@ -1090,6 +1149,8 @@ fn main() {
     scroll_video_button.set_visible(false);
     scroll_video_button.set_sensitive(false);
 
+    vbox.hide();
+
     gtk::timeout_add(1, clone!(glarea; || {
         glarea.queue_render();
         return glib::Continue(true);
@@ -1103,10 +1164,9 @@ fn main() {
         }
         return glib::Continue(true);
     }));
-    gtk::timeout_add(20, clone!(glarea, state, scroll_video_button; || {
+    gtk::timeout_add(17, clone!(glarea, state, scroll_video_button; || {
         let mut state = state.borrow_mut();
         let state = state.as_mut().unwrap();
-
         if state.bus.is_some() {
             let msg = state.bus.as_ref().unwrap().pop();
             use gst::MessageView;
@@ -1117,6 +1177,7 @@ fn main() {
                 match msg.view() {
                     MessageView::Eos(..) => {
                         state.playbin.as_ref().unwrap().set_state(gst::State::Null).unwrap();
+                        vbox.hide();
                         ();
                     },
                     MessageView::Error(err) => {
@@ -1150,6 +1211,7 @@ fn main() {
                 animation_progress.set_visible(false);
                 scroll_video_button.set_visible(false);
                 scroll_video_button.set_sensitive(false);
+                vbox.hide();
                 state.playbin.as_ref().unwrap().set_state(gst::State::Null).unwrap();
 
             } else {
