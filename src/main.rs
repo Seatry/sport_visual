@@ -30,7 +30,6 @@ use plotlib::style::LineStyle;
 use std::str::FromStr;
 use std::io::Cursor;
 use std::ptr;
-use std::cell::RefCell;
 use std::rc::Rc;
 use std::vec::Vec;
 
@@ -229,7 +228,7 @@ fn main() {
     }
 
     implement_vertex!(VertexLight, position);
-    struct State {
+    struct StateInfo {
         display: Facade,
         light_buffer: glium::VertexBuffer<VertexLight>,
         light_indices: glium::index::NoIndices,
@@ -238,6 +237,9 @@ fn main() {
         model_indices: glium::index::NoIndices,
         program_model: glium::program::Program,
         texture: glium::texture::Texture2d,
+    }
+
+    struct State {
         tx: f32, ty: f32, tz: f32,
         rx: f32, ry: f32, rz: f32,
         scale: f32,
@@ -253,170 +255,175 @@ fn main() {
         bus: std::option::Option<gst::Bus>,
     }
 
-    let state: Rc<RefCell<Option<State>>> = Rc::new(RefCell::new(None));
+    let state_info: std::sync::Arc<std::sync::Mutex<Option<StateInfo>>> = std::sync::Arc::new(std::sync::Mutex::new(None));
+    let state: std::sync::Arc<std::sync::Mutex<Option<State>>> = std::sync::Arc::new(std::sync::Mutex::new(None));
 
-    glarea.connect_realize(clone!(glarea, state; |_widget| {
-            let mut state = state.borrow_mut();
+    glarea.connect_realize(clone!(glarea, state, state_info; |_widget| {
+        let mut state = state.lock().unwrap();
+        let mut state_info = state_info.lock().unwrap();
 
-            let display = Facade {
-                context: unsafe {
-                    glium::backend::Context::new::<_, >(
-                        Backend {
-                            glarea: glarea.clone(),
-                        }, true, Default::default())
-                }.unwrap(),
-            };
+        let display = Facade {
+            context: unsafe {
+                glium::backend::Context::new::<_, >(
+                    Backend {
+                        glarea: glarea.clone(),
+                    }, true, Default::default())
+            }.unwrap(),
+        };
 
-	let cube_light = vec![VertexLight {position: [-0.18, -0.18, -0.18]},
-						  VertexLight {position: [-0.18, 0.18, -0.18]}, VertexLight {position: [0.18, -0.18, -0.18]},
-						  VertexLight {position: [-0.18, 0.18, -0.18]},
-						  VertexLight {position: [0.18, 0.18, -0.18]}, VertexLight {position: [0.18, -0.18, -0.18]},
-						  VertexLight {position: [-0.18, -0.18, 0.18]},
-						  VertexLight {position: [-0.18, 0.18, 0.18]}, VertexLight {position: [0.18, -0.18, 0.18]},
-						  VertexLight {position: [-0.18, 0.18, 0.18]},
-						  VertexLight {position: [0.18, 0.18, 0.18]}, VertexLight {position: [0.18, -0.18, 0.18]},
-						  VertexLight {position: [0.18, -0.18, -0.18]},
-						  VertexLight {position: [0.18, 0.18, -0.18]}, VertexLight {position: [0.18, -0.18, 0.18]},
-						  VertexLight {position: [0.18, 0.18, -0.18]},
-						  VertexLight {position: [0.18, 0.18, 0.18]}, VertexLight {position: [0.18, -0.18, 0.18]},
-						  VertexLight {position: [-0.18, -0.18, -0.18]},
-						  VertexLight {position: [-0.18, 0.18, -0.18]}, VertexLight {position: [-0.18, -0.18, 0.18]},
-						  VertexLight {position: [-0.18, 0.18, -0.18]},
-						  VertexLight {position: [-0.18, 0.18, 0.18]}, VertexLight {position: [-0.18, -0.18, 0.18]},
-						  VertexLight {position: [-0.18, 0.18, -0.18]},
-						  VertexLight {position: [0.18, 0.18, 0.18]}, VertexLight {position: [0.18, 0.18, -0.18]},
-						  VertexLight {position: [-0.18, 0.18, 0.18]},
-						  VertexLight {position: [0.18, 0.18, 0.18]}, VertexLight {position: [0.18, 0.18, -0.18]},
-						  VertexLight {position: [-0.18, -0.18, -0.18]},
-						  VertexLight {position: [-0.18, -0.18, 0.18]}, VertexLight {position: [0.18, -0.18, -0.18]},
-						  VertexLight {position: [-0.18, -0.18, 0.18]},
-						  VertexLight {position: [0.18, -0.18, 0.18]}, VertexLight {position: [0.18, -0.18, -0.18]}];
+        let cube_light = vec![VertexLight {position: [-0.18, -0.18, -0.18]},
+                              VertexLight {position: [-0.18, 0.18, -0.18]}, VertexLight {position: [0.18, -0.18, -0.18]},
+                              VertexLight {position: [-0.18, 0.18, -0.18]},
+                              VertexLight {position: [0.18, 0.18, -0.18]}, VertexLight {position: [0.18, -0.18, -0.18]},
+                              VertexLight {position: [-0.18, -0.18, 0.18]},
+                              VertexLight {position: [-0.18, 0.18, 0.18]}, VertexLight {position: [0.18, -0.18, 0.18]},
+                              VertexLight {position: [-0.18, 0.18, 0.18]},
+                              VertexLight {position: [0.18, 0.18, 0.18]}, VertexLight {position: [0.18, -0.18, 0.18]},
+                              VertexLight {position: [0.18, -0.18, -0.18]},
+                              VertexLight {position: [0.18, 0.18, -0.18]}, VertexLight {position: [0.18, -0.18, 0.18]},
+                              VertexLight {position: [0.18, 0.18, -0.18]},
+                              VertexLight {position: [0.18, 0.18, 0.18]}, VertexLight {position: [0.18, -0.18, 0.18]},
+                              VertexLight {position: [-0.18, -0.18, -0.18]},
+                              VertexLight {position: [-0.18, 0.18, -0.18]}, VertexLight {position: [-0.18, -0.18, 0.18]},
+                              VertexLight {position: [-0.18, 0.18, -0.18]},
+                              VertexLight {position: [-0.18, 0.18, 0.18]}, VertexLight {position: [-0.18, -0.18, 0.18]},
+                              VertexLight {position: [-0.18, 0.18, -0.18]},
+                              VertexLight {position: [0.18, 0.18, 0.18]}, VertexLight {position: [0.18, 0.18, -0.18]},
+                              VertexLight {position: [-0.18, 0.18, 0.18]},
+                              VertexLight {position: [0.18, 0.18, 0.18]}, VertexLight {position: [0.18, 0.18, -0.18]},
+                              VertexLight {position: [-0.18, -0.18, -0.18]},
+                              VertexLight {position: [-0.18, -0.18, 0.18]}, VertexLight {position: [0.18, -0.18, -0.18]},
+                              VertexLight {position: [-0.18, -0.18, 0.18]},
+                              VertexLight {position: [0.18, -0.18, 0.18]}, VertexLight {position: [0.18, -0.18, -0.18]}];
 
-    let model = make_model("/home/alexander/IdeaProjects/sport_visual/models/union.stl").0;
-	let light_buffer = glium::VertexBuffer::new(&display, &cube_light).unwrap();
-    let light_indices = glium::index::NoIndices(glium::index::PrimitiveType::TrianglesList);
-	let model_buffer = glium::VertexBuffer::new(&display, &model).unwrap();
-    let model_indices = glium::index::NoIndices(glium::index::PrimitiveType::TrianglesList);
+        let model = make_model("/home/alexander/IdeaProjects/sport_visual/models/union.stl").0;
+        let light_buffer = glium::VertexBuffer::new(&display, &cube_light).unwrap();
+        let light_indices = glium::index::NoIndices(glium::index::PrimitiveType::TrianglesList);
+        let model_buffer = glium::VertexBuffer::new(&display, &model).unwrap();
+        let model_indices = glium::index::NoIndices(glium::index::PrimitiveType::TrianglesList);
 
-    let vertex_shader_light = r#"
-        #version 330
-        in vec3 position;
-        uniform mat4 modelMatrix, projectionMatrix;
-        void main() {
-            gl_Position = projectionMatrix * modelMatrix * vec4(position, 1.0);
-        }
-    "#;
+        let vertex_shader_light = r#"
+            #version 330
+            in vec3 position;
+            uniform mat4 modelMatrix, projectionMatrix;
+            void main() {
+                gl_Position = projectionMatrix * modelMatrix * vec4(position, 1.0);
+            }
+        "#;
 
-    let fragment_shader_light = r#"
-        #version 330
-        out vec4 color;
-        void main() {
-            color = vec4(1.0, 1.0, 1.0, 1.0);
-        }
-    "#;
+        let fragment_shader_light = r#"
+            #version 330
+            out vec4 color;
+            void main() {
+                color = vec4(1.0, 1.0, 1.0, 1.0);
+            }
+        "#;
 
-	 let vertex_shader_model = r#"
-        #version 330
-        in vec3 position;
-		in vec2 tex_coords;
-		in vec3 normal;
-		out vec2 v_tex_coords;
-		out vec3 v_normal;
-		out vec3 v_position;
-        uniform mat4 modelMatrix, projectionMatrix;
-        void main() {
-			v_tex_coords = tex_coords;
-			v_normal = normalize(mat3(transpose(inverse(modelMatrix)))*normal);
-			v_position = vec3(modelMatrix*vec4(position, 1.0));
-            gl_Position = projectionMatrix * modelMatrix * vec4(position, 1.0);
-        }
-    "#;
+         let vertex_shader_model = r#"
+            #version 330
+            in vec3 position;
+            in vec2 tex_coords;
+            in vec3 normal;
+            out vec2 v_tex_coords;
+            out vec3 v_normal;
+            out vec3 v_position;
+            uniform mat4 modelMatrix, projectionMatrix;
+            void main() {
+                v_tex_coords = tex_coords;
+                v_normal = normalize(mat3(transpose(inverse(modelMatrix)))*normal);
+                v_position = vec3(modelMatrix*vec4(position, 1.0));
+                gl_Position = projectionMatrix * modelMatrix * vec4(position, 1.0);
+            }
+        "#;
 
-    let fragment_shader_model = r#"
-        #version 330
-		in vec2 v_tex_coords;
-		in vec3 v_normal;
-		in vec3 v_position;
-        out vec4 color;
-        uniform sampler2D tex;
-		uniform vec3 LightPosition;
-		uniform vec3 LightIntensity;
-		uniform vec3 MaterialKa;
-		uniform vec3 MaterialKd;
-		uniform float MaterialKs;
-		uniform bool is_light;
-		uniform bool is_texture;
-		uniform vec4 model_color;
-		out vec4 FragColor;
-		void phongModel(vec3 pos, vec3 norm, out vec3 ambAndDiffspec) {
-			vec3 ambient = LightIntensity*MaterialKa;
-			vec3 lightDir = normalize(LightPosition - v_position);
-			float diff = max(dot(v_normal, lightDir), 0.0);
-			vec3 diffuse = LightIntensity*(diff * MaterialKd);
-			vec3 viewPos = vec3(0.0, 0.0, 2.0);
-			vec3 viewDir = normalize(viewPos - pos);
-			vec3 r = reflect(-lightDir, norm);
-			vec3 specular = vec3(pow(max(dot(r,viewDir), 0.0), 32)*MaterialKs*diff);
-			ambAndDiffspec = ambient  + diffuse + specular;
-		}
-		void main() {
-			vec3 ambAndDiffspec;
-			vec4 texColor = texture(tex, v_tex_coords);
-			phongModel(v_position, v_normal, ambAndDiffspec);
-			if(is_light) {
-				FragColor = vec4(ambAndDiffspec, 1.0) * model_color;
-			} else {
-				FragColor = model_color;
-			}
-			if(is_texture) {
-				FragColor *= texColor;
-			}
-		}
-    "#;
+        let fragment_shader_model = r#"
+            #version 330
+            in vec2 v_tex_coords;
+            in vec3 v_normal;
+            in vec3 v_position;
+            out vec4 color;
+            uniform sampler2D tex;
+            uniform vec3 LightPosition;
+            uniform vec3 LightIntensity;
+            uniform vec3 MaterialKa;
+            uniform vec3 MaterialKd;
+            uniform float MaterialKs;
+            uniform bool is_light;
+            uniform bool is_texture;
+            uniform vec4 model_color;
+            out vec4 FragColor;
+            void phongModel(vec3 pos, vec3 norm, out vec3 ambAndDiffspec) {
+                vec3 ambient = LightIntensity*MaterialKa;
+                vec3 lightDir = normalize(LightPosition - v_position);
+                float diff = max(dot(v_normal, lightDir), 0.0);
+                vec3 diffuse = LightIntensity*(diff * MaterialKd);
+                vec3 viewPos = vec3(0.0, 0.0, 2.0);
+                vec3 viewDir = normalize(viewPos - pos);
+                vec3 r = reflect(-lightDir, norm);
+                vec3 specular = vec3(pow(max(dot(r,viewDir), 0.0), 32)*MaterialKs*diff);
+                ambAndDiffspec = ambient  + diffuse + specular;
+            }
+            void main() {
+                vec3 ambAndDiffspec;
+                vec4 texColor = texture(tex, v_tex_coords);
+                phongModel(v_position, v_normal, ambAndDiffspec);
+                if(is_light) {
+                    FragColor = vec4(ambAndDiffspec, 1.0) * model_color;
+                } else {
+                    FragColor = model_color;
+                }
+                if(is_texture) {
+                    FragColor *= texColor;
+                }
+            }
+        "#;
 
-    let program_light = glium::Program::from_source(&display, vertex_shader_light, fragment_shader_light, None).unwrap();
-	let program_model = glium::Program::from_source(&display, vertex_shader_model, fragment_shader_model, None).unwrap();
-    let image = image::load(
-        Cursor::new(&include_bytes!("../textures/t2.jpg")[..]),image::ImageFormat::Jpeg).unwrap().to_rgba();
-    let image_dimensions = image.dimensions();
-    let image = glium::texture::RawImage2d::from_raw_rgba_reversed(&image.into_raw(), image_dimensions);
-    let texture = glium::texture::Texture2d::new(&display, image).unwrap();
+        let program_light = glium::Program::from_source(&display, vertex_shader_light, fragment_shader_light, None).unwrap();
+        let program_model = glium::Program::from_source(&display, vertex_shader_model, fragment_shader_model, None).unwrap();
+        let image = image::load(
+            Cursor::new(&include_bytes!("../textures/t2.jpg")[..]),image::ImageFormat::Jpeg).unwrap().to_rgba();
+        let image_dimensions = image.dimensions();
+        let image = glium::texture::RawImage2d::from_raw_rgba_reversed(&image.into_raw(), image_dimensions);
+        let texture = glium::texture::Texture2d::new(&display, image).unwrap();
 
-    let tx = 0.0f32; let ty = 0.0f32; let tz = 0.0f32;
-    let rx = 30.0f32; let ry = 45.0f32; let rz = 0.0f32;
-    let scale = 0.5f32;
-    let is_draw = true;
-    let is_light = true;
-    let is_texture = true;
-    let int = 1.0f32; let amb = 0.5f32; let diff = 1.0f32; let spec = 0.8f32;
-    let back_color = gdk::RGBA{red : 0.0, green : 0.0, blue : 0.0, alpha : 1.0};
-    let model_color = gdk::RGBA{red : 1.0, green : 1.0, blue : 1.0, alpha : 1.0};
-    let is_anime = false;
-    let anime_list: Vec<(f32, f32, f32, f32)> = Vec::new();
-    let al_ind = 0;
+        let tx = 0.0f32; let ty = 0.0f32; let tz = 0.0f32;
+        let rx = 30.0f32; let ry = 45.0f32; let rz = 0.0f32;
+        let scale = 0.5f32;
+        let is_draw = true;
+        let is_light = true;
+        let is_texture = true;
+        let int = 1.0f32; let amb = 0.5f32; let diff = 1.0f32; let spec = 0.8f32;
+        let back_color = gdk::RGBA{red : 0.0, green : 0.0, blue : 0.0, alpha : 1.0};
+        let model_color = gdk::RGBA{red : 1.0, green : 1.0, blue : 1.0, alpha : 1.0};
+        let is_anime = false;
+        let anime_list: Vec<(f32, f32, f32, f32)> = Vec::new();
+        let al_ind = 0;
 
-    *state = Some(State {
-        display: display,
-        light_buffer: light_buffer,
-        light_indices: light_indices,
-        program_light: program_light,
-        model_buffer: model_buffer,
-        model_indices: model_indices,
-        program_model: program_model,
-        texture : texture,
-        tx : tx, ty : ty, tz : tz,
-        rx : rx, ry : ry, rz: rz, scale : scale,
-        is_draw : is_draw,
-        is_light : is_light, is_texture : is_texture,
-        int : int, amb : amb, diff : diff, spec : spec,
-        back_color : back_color, model_color : model_color,
-        anime_list: anime_list,
-        al_ind: al_ind,
-        is_anime: is_anime,
-        arx: 0.0f32, ary: 0.0f32, arz: 0.0f32,
-        playbin: None,
-        bus: None,
-         });
+        *state = Some(State {
+                tx : tx, ty : ty, tz : tz,
+                rx : rx, ry : ry, rz: rz, scale : scale,
+                is_draw : is_draw,
+                is_light : is_light, is_texture : is_texture,
+                int : int, amb : amb, diff : diff, spec : spec,
+                back_color : back_color, model_color : model_color,
+                anime_list: anime_list,
+                al_ind: al_ind,
+                is_anime: is_anime,
+                arx: 0.0f32, ary: 0.0f32, arz: 0.0f32,
+                playbin: None,
+                bus: None,
+        });
+        *state_info = Some(StateInfo {
+                display: display,
+                light_buffer: light_buffer,
+                light_indices: light_indices,
+                program_light: program_light,
+                model_buffer: model_buffer,
+                model_indices: model_indices,
+                program_model: program_model,
+                texture : texture,
+        })
+
     }));
     let model = make_model("/home/alexander/IdeaProjects/sport_visual/models/union.stl");
     let model_state: std::sync::Arc<std::sync::Mutex<ModelState>> = std::sync::Arc::new(std::sync::Mutex::new(ModelState{
@@ -424,14 +431,17 @@ fn main() {
     }));
 
     glarea.connect_unrealize(clone!(state; |_widget| {
-            let mut state = state.borrow_mut();
+            let mut state = state.lock().unwrap();
             *state = None;
         }));
 
-    glarea.connect_render(clone!(state, model_state; |_glarea, _glctx| {
-            let mut state = state.borrow_mut();
+    glarea.connect_render(clone!(state, state_info, model_state; |_glarea, _glctx| {
+            let mut state = state.lock().unwrap();
             let state = state.as_mut().unwrap();
-            state.model_buffer = glium::VertexBuffer::new(&state.display, &model_state.lock().unwrap().model).unwrap();
+            let mut state_info = state_info.lock().unwrap();
+            let state_info = state_info.as_mut().unwrap();
+
+            state_info.model_buffer = glium::VertexBuffer::new(&state_info.display, &model_state.lock().unwrap().model).unwrap();
             let max_scale = model_state.lock().unwrap().max_scale;
 //            let dx = model_state.lock().unwrap().dx;
 //            let dy = model_state.lock().unwrap().dy;
@@ -442,7 +452,7 @@ fn main() {
             let spec = state.spec;
             let back = state.back_color;
             let color = state.model_color;
-            let mut target = state.display.draw();
+            let mut target = state_info.display.draw();
             target.clear_color_and_depth((back.red as f32,
                 back.green as f32 , back.blue as f32, back.alpha as f32), 1.0);
             let (w, h) = target.get_dimensions();
@@ -476,7 +486,7 @@ fn main() {
                 ],
                 projectionMatrix: pm,
                 tex: glium::uniforms::Sampler::wrap_function(glium::uniforms::Sampler::new
-                    (&state.texture),glium::uniforms::SamplerWrapFunction::Repeat),
+                    (&state_info.texture),glium::uniforms::SamplerWrapFunction::Repeat),
                 LightIntensity: int,
                 LightPosition: [state.tx-0.5, state.ty+0.5, 0.0f32],
                 MaterialKa: amb,
@@ -498,10 +508,10 @@ fn main() {
             };
             if state.is_draw {
                 if state.is_light {
-                    target.draw(&state.light_buffer, &state.light_indices, &state.program_light,
+                    target.draw(&state_info.light_buffer, &state_info.light_indices, &state_info.program_light,
                         &uniforms_light,&params).unwrap();
                 }
-                target.draw(&state.model_buffer, &state.model_indices, &state.program_model,
+                target.draw(&state_info.model_buffer, &state_info.model_indices, &state_info.program_model,
                     &uniforms_model,&params).unwrap();
             }
             target.finish().unwrap();
@@ -597,7 +607,7 @@ fn main() {
     let light_button = gtk::CheckButton::new_with_label("enable");
     light_button.clicked();
     light_button.connect_clicked(clone!(state, glarea; |_light_button| {
-        let mut state = state.borrow_mut();
+        let mut state = state.lock().unwrap();
         let state = state.as_mut().unwrap();
         state.is_light= !state.is_light;
         glarea.queue_render();
@@ -607,7 +617,7 @@ fn main() {
     let int_button = gtk::SpinButton::new_with_range(0.0, 1.0, 0.05);
     int_button.set_value(1.0);
     int_button.connect_property_value_notify(clone!(state, glarea; |int_button| {
-        let mut state = state.borrow_mut();
+        let mut state = state.lock().unwrap();
         let state = state.as_mut().unwrap();
         state.int = int_button.get_value() as f32;
         glarea.queue_render();
@@ -620,7 +630,7 @@ fn main() {
     let amb_button = gtk::SpinButton::new_with_range(0.0, 1.0, 0.05);
     amb_button.set_value(0.5);
     amb_button.connect_property_value_notify(clone!(state, glarea; |amb_button| {
-        let mut state = state.borrow_mut();
+        let mut state = state.lock().unwrap();
         let state = state.as_mut().unwrap();
         state.amb = amb_button.get_value() as f32;
         glarea.queue_render();
@@ -633,7 +643,7 @@ fn main() {
     let diff_button = gtk::SpinButton::new_with_range(0.0, 1.0, 0.05);
     diff_button.set_value(1.0);
     diff_button.connect_property_value_notify(clone!(state, glarea; |diff_button| {
-        let mut state = state.borrow_mut();
+        let mut state = state.lock().unwrap();
         let state = state.as_mut().unwrap();
         state.diff = diff_button.get_value() as f32;
         glarea.queue_render();
@@ -646,7 +656,7 @@ fn main() {
     let spec_button = gtk::SpinButton::new_with_range(0.0, 1.0, 0.05);
     spec_button.set_value(0.8);
     spec_button.connect_property_value_notify(clone!(state, glarea; |spec_button| {
-        let mut state = state.borrow_mut();
+        let mut state = state.lock().unwrap();
         let state = state.as_mut().unwrap();
         state.spec = spec_button.get_value() as f32;
         glarea.queue_render();
@@ -659,7 +669,7 @@ fn main() {
     let texture_button = gtk::CheckButton::new_with_label("");
     texture_button.clicked();
     texture_button.connect_clicked(clone!(state, glarea; |_texture_button| {
-        let mut state = state.borrow_mut();
+        let mut state = state.lock().unwrap();
         let state = state.as_mut().unwrap();
         state.is_texture= !state.is_texture;
         glarea.queue_render();
@@ -668,7 +678,7 @@ fn main() {
     let scale_button = gtk::Scale::new_with_range(gtk::Orientation::Horizontal, 0.0, 1.0, 0.05);
     scale_button.set_value(0.5);
     scale_button.connect_value_changed(clone!(state, glarea; |scale_button| {
-        let mut state = state.borrow_mut();
+        let mut state = state.lock().unwrap();
         let state = state.as_mut().unwrap();
         state.scale = scale_button.get_value() as f32;
         glarea.queue_render();
@@ -679,7 +689,7 @@ fn main() {
         &gdk::RGBA{red : 1.0, green : 1.0, blue : 1.0, alpha : 1.0});
     color_button.set_title("model`s colour");
     color_button.connect_color_set(clone!(state, glarea; |color_button| {
-        let mut state = state.borrow_mut();
+        let mut state = state.lock().unwrap();
         let state = state.as_mut().unwrap();
         state.model_color = color_button.get_rgba();
         glarea.queue_render();
@@ -694,7 +704,7 @@ fn main() {
     back_button.set_title("glarea`s color");
     back_button.set_name("background");
     back_button.connect_color_set(clone!(state, glarea; |back_button| {
-        let mut state = state.borrow_mut();
+        let mut state = state.lock().unwrap();
         let state = state.as_mut().unwrap();
         state.back_color = back_button.get_rgba();
         glarea.queue_render();
@@ -755,7 +765,7 @@ fn main() {
     let animation_progress = gtk::ProgressBar::new();
     animation_progress.set_text("running animation");
     animation_progress.set_fraction(0.0);
-    animation_progress.set_pulse_step(0.05);
+    animation_progress.set_pulse_step(0.25);
     animation_progress.set_show_text(true);
     let animation_progress_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
     animation_progress_box.add(&animation_progress);
@@ -782,7 +792,7 @@ fn main() {
     let vbox = gtk::Box::new(gtk::Orientation::Horizontal, 0);
 
     csv_button.connect_file_set(clone!(state, animation_progress, start_button, vbox, pause_button, scroll_video_button; |csv_button| {
-        let mut state = state.borrow_mut();
+        let mut state = state.lock().unwrap();
         let state = state.as_mut().unwrap();
 
         let path = csv_button.get_filename().unwrap();
@@ -863,7 +873,6 @@ fn main() {
 
         state.anime_list = list;
         state.al_ind = 0;
-        state.is_anime = true;
         state.arx = state.rx;
         state.ary = state.ry;
         state.arz = state.rz;
@@ -876,7 +885,7 @@ fn main() {
         scroll_video_button.set_visible(true);
         scroll_video_button.set_sensitive(true);
         scroll_video_button.set_range(0.0, state.anime_list.len() as f64);
-        scroll_video_button.set_increments((state.anime_list.len() as f64 / 100.0).ceil(), 0.0);
+        scroll_video_button.set_increments((state.anime_list.len() as f64 / 30.0).ceil(), 0.0);
         scroll_video_button.set_value(0.0);
 
         if state.playbin.is_some() {
@@ -932,7 +941,7 @@ fn main() {
         });
         vbox.pack_start(&video_window, true, true, 0);
         vbox.show_all();
-
+        state.is_anime = true;
     }));
 
     scroll_video_button.connect_format_value(move |scroll_video_button, _|{
@@ -958,7 +967,7 @@ fn main() {
     csv_box.add(&csv_button);
 
     pause_button.connect_clicked(clone!(state, start_button; |pause_button| {
-        let mut state = state.borrow_mut();
+        let mut state = state.lock().unwrap();
         let state = state.as_mut().unwrap();
 
         match state.is_anime {
@@ -975,7 +984,7 @@ fn main() {
     }));
 
     start_button.connect_clicked(clone!(state, pause_button; |start_button| {
-        let mut state = state.borrow_mut();
+        let mut state = state.lock().unwrap();
         let state = state.as_mut().unwrap();
 
         start_button.set_sensitive(false);
@@ -989,9 +998,11 @@ fn main() {
     }));
 
     video_forward_button.connect_clicked(clone!(state, start_button, scroll_video_button; |_video_forward_button| {
-        let mut state = state.borrow_mut();
+        let mut state = state.lock().unwrap();
         let state = state.as_mut().unwrap();
         if state.is_anime || start_button.is_sensitive() {
+            let mem = state.is_anime;
+            state.is_anime = false;
             let n = 50.0 * 10.0; // 10 sec
             state.al_ind += n as usize;
             let seconds = (scroll_video_button.get_value() / 50.0).ceil() as u64 + 10;
@@ -1000,16 +1011,21 @@ fn main() {
             seconds as u64 * gst::SECOND,).is_err() {
                 eprintln!("Seekition to {} failed", seconds);
             }
+            state.is_anime = mem;
             if !state.is_anime {
                 state.playbin.as_ref().unwrap().set_state(gst::State::Paused).unwrap();
+            } else {
+                state.playbin.as_ref().unwrap().set_state(gst::State::Playing).unwrap();
             }
         }
     }));
 
     video_back_button.connect_clicked(clone!(state, start_button, scroll_video_button; |_video_back_button| {
-        let mut state = state.borrow_mut();
+        let mut state = state.lock().unwrap();
         let state = state.as_mut().unwrap();
         if state.is_anime || start_button.is_sensitive() {
+            let mem = state.is_anime;
+            state.is_anime = false;
             let n = 50.0 * 10.0; // 10 sec
             if state.al_ind < n as usize {
                 state.al_ind = 0;
@@ -1027,8 +1043,11 @@ fn main() {
             seconds as u64 * gst::SECOND,).is_err() {
                 eprintln!("Seekition to {} failed", seconds);
             }
+            state.is_anime = mem;
             if !state.is_anime {
                 state.playbin.as_ref().unwrap().set_state(gst::State::Paused).unwrap();
+            } else {
+                state.playbin.as_ref().unwrap().set_state(gst::State::Playing).unwrap();
             }
         }
     }));
@@ -1044,9 +1063,9 @@ fn main() {
     open_texture_filter.add_pattern("*.jpg");
     open_texture_filter.set_name("*.jpg");
     open_texture.add_filter(&open_texture_filter);
-    open_texture.connect_file_set(clone!(state; |open_texture| {
-            let mut state = state.borrow_mut();
-            let state = state.as_mut().unwrap();
+    open_texture.connect_file_set(clone!(state_info; |open_texture| {
+            let mut state_info = state_info.lock().unwrap();
+            let state_info = state_info.as_mut().unwrap();
             let path = open_texture.get_filename().unwrap();
             let path_str = path.to_str().unwrap();
             let file = File::open(&path_str).unwrap();
@@ -1058,7 +1077,7 @@ fn main() {
                 Cursor::new(&buf.as_slice() as &dyn std::convert::AsRef<[u8]>),image::ImageFormat::Jpeg).unwrap().to_rgba();
             let image_dimensions = image.dimensions();
             let image = glium::texture::RawImage2d::from_raw_rgba_reversed(&image.into_raw(), image_dimensions);
-            state.texture = glium::texture::Texture2d::new(&state.display, image).unwrap();
+            state_info.texture = glium::texture::Texture2d::new(&state_info.display, image).unwrap();
     }));
 
     let texture_box = gtk::Box::new(gtk::Orientation::Vertical, 1);
@@ -1107,7 +1126,7 @@ fn main() {
 
     window.connect_key_press_event(clone!(state, glarea; |_window, key| {
         let keyval = gdk::EventKey::get_keyval(&key);
-        let mut state = state.borrow_mut();
+        let mut state = state.lock().unwrap();
         let state = state.as_mut().unwrap();
         match keyval {
             gdk::enums::key::Escape => gtk::main_quit(),
@@ -1156,77 +1175,67 @@ fn main() {
         return glib::Continue(true);
     }));
 
-    gtk::timeout_add(1000, clone!(model_state; || {
+    gtk::timeout_add(1000, clone!(model_state, state, scroll_video_button; || {
         if !model_state.lock().unwrap().is_render {
             progress.set_visible(false);
         } else  {
             progress.pulse();
         }
-        return glib::Continue(true);
+        let mut state = state.lock().unwrap();
+        let state = state.as_mut().unwrap();
+        let ind = scroll_video_button.get_value() as usize;
+        if state.al_ind + 55 < ind || (state.al_ind > 55 && state.al_ind > ind + 55 ) {
+            let mem = state.is_anime;
+            state.is_anime = false;
+            let seconds = (ind as f64 / 50.0).ceil() as u64;
+            if state.playbin.as_ref().unwrap().seek_simple(gst::SeekFlags::FLUSH | gst::SeekFlags::KEY_UNIT,
+            seconds as u64 * gst::SECOND,).is_err() {
+                eprintln!("Seekition to {} failed", seconds);
+            }
+            state.al_ind = ind;
+            state.is_anime = mem;
+            if state.is_anime {
+                state.playbin.as_ref().unwrap().set_state(gst::State::Playing).unwrap();
+            } else {
+                state.playbin.as_ref().unwrap().set_state(gst::State::Paused).unwrap();
+            }
+        }
+        scroll_video_button.set_value(state.al_ind as f64);
+        if state.al_ind > state.anime_list.len() {
+            animation_progress.set_visible(false);
+            scroll_video_button.set_visible(false);
+            scroll_video_button.set_sensitive(false);
+            vbox.hide();
+            state.playbin.as_ref().unwrap().set_state(gst::State::Null).unwrap();
+        }
+            return glib::Continue(true);
     }));
 
-    gtk::timeout_add(17, clone!(glarea, state, scroll_video_button; || {
-        let mut state = state.borrow_mut();
+//    use std::time::SystemTime;
+//    let mut now = SystemTime::now();
+
+    extern crate periodic;
+    use std::time::Duration;
+
+    let mut planner = periodic::Planner::new();
+    planner.add(clone!(state; || {
+        let mut state = state.lock().unwrap();
         let state = state.as_mut().unwrap();
-        if state.bus.is_some() {
-            let msg = state.bus.as_ref().unwrap().pop();
-            use gst::MessageView;
-
-            if msg.is_some() {
-                let msg = msg.unwrap();
-
-                match msg.view() {
-                    MessageView::Eos(..) => {
-                        state.playbin.as_ref().unwrap().set_state(gst::State::Null).unwrap();
-                        vbox.hide();
-                        ();
-                    },
-                    MessageView::Error(err) => {
-                        state.playbin.as_ref().unwrap().set_state(gst::State::Null).unwrap();
-
-                        println!(
-                            "Error from {:?}: {} ({:?})",
-                            err.get_src().map(|s| s.get_path_string()),
-                            err.get_error(),
-                            err.get_debug()
-                        );
-                    }
-                    _ => (),
-                };
-            }
-
-        }
-
         if state.is_anime {
-            animation_progress.pulse();
-            let ind = scroll_video_button.get_value() as usize;
-            if state.al_ind != ind {
-                let seconds = (scroll_video_button.get_value() / 50.0).ceil() as u64;
-                if state.playbin.as_ref().unwrap().seek_simple(gst::SeekFlags::FLUSH | gst::SeekFlags::KEY_UNIT,
-                seconds as u64 * gst::SECOND,).is_err() {
-                    eprintln!("Seekition to {} failed", seconds);
-                }
-            }
+            let ind = state.al_ind;
             if ind >= state.anime_list.len() {
                 state.is_anime = false;
-                animation_progress.set_visible(false);
-                scroll_video_button.set_visible(false);
-                scroll_video_button.set_sensitive(false);
-                vbox.hide();
-                state.playbin.as_ref().unwrap().set_state(gst::State::Null).unwrap();
-
+                state.al_ind += 1;
             } else {
                 let angles = state.anime_list[ind];
                 state.rx = angles.0 + state.arx;
                 state.ry = angles.1 + state.ary;
                 state.rz = angles.2 + state.arz;
-                scroll_video_button.set_value(ind as f64 + 1.0);
                 state.al_ind = ind + 1;
             }
         }
-        glarea.queue_render();
-        return glib::Continue(true);
-    }));
+    }), periodic::Every::new(Duration::from_millis(20)), );
+    planner.start();
 
     gtk::main();
 }
