@@ -945,7 +945,7 @@ fn main() {
     }));
 
     scroll_video_button.connect_format_value(move |scroll_video_button, _|{
-        let mut seconds = (scroll_video_button.get_value() / 50.0).ceil();
+        let mut seconds = (scroll_video_button.get_value() / 50.0).round();
         let minutes = (seconds / 60.0).floor();
         seconds = seconds % 60.0;
         return format!("{}:{}", minutes, seconds);
@@ -1005,11 +1005,11 @@ fn main() {
             state.is_anime = false;
             let n = 50.0 * 10.0; // 10 sec
             state.al_ind += n as usize;
-            let seconds = (scroll_video_button.get_value() / 50.0).ceil() as u64 + 10;
+            let mseconds = (scroll_video_button.get_value() * 20.0) as u64 + 10*1000;
             scroll_video_button.set_value(scroll_video_button.get_value() + n);
-            if state.playbin.as_ref().unwrap().seek_simple(gst::SeekFlags::FLUSH | gst::SeekFlags::KEY_UNIT,
-            seconds as u64 * gst::SECOND,).is_err() {
-                eprintln!("Seekition to {} failed", seconds);
+            if state.playbin.as_ref().unwrap().seek_simple(gst::SeekFlags::FLUSH,
+            mseconds * gst::MSECOND,).is_err() {
+                eprintln!("Seekition to {} failed", mseconds);
             }
             state.is_anime = mem;
             if !state.is_anime {
@@ -1032,16 +1032,16 @@ fn main() {
             } else {
                 state.al_ind -= n as usize;
             }
-            let mut seconds = (scroll_video_button.get_value() / 50.0).ceil() as u64;
+            let mut mseconds = (scroll_video_button.get_value() * 20.0) as u64;
             scroll_video_button.set_value(scroll_video_button.get_value() - n);
-            if seconds < 10 {
-                seconds = 0;
+            if mseconds < 10*1000 {
+                mseconds = 0;
             } else {
-                seconds -= 10;
+                mseconds -= 10*1000;
             }
-            if state.playbin.as_ref().unwrap().seek_simple(gst::SeekFlags::FLUSH | gst::SeekFlags::KEY_UNIT,
-            seconds as u64 * gst::SECOND,).is_err() {
-                eprintln!("Seekition to {} failed", seconds);
+            if state.playbin.as_ref().unwrap().seek_simple(gst::SeekFlags::FLUSH,
+            mseconds as u64 * gst::MSECOND,).is_err() {
+                eprintln!("Seekition to {} failed", mseconds);
             }
             state.is_anime = mem;
             if !state.is_anime {
@@ -1187,10 +1187,11 @@ fn main() {
         if state.al_ind + 55 < ind || (state.al_ind > 55 && state.al_ind > ind + 55 ) {
             let mem = state.is_anime;
             state.is_anime = false;
-            let seconds = (ind as f64 / 50.0).ceil() as u64;
-            if state.playbin.as_ref().unwrap().seek_simple(gst::SeekFlags::FLUSH | gst::SeekFlags::KEY_UNIT,
-            seconds as u64 * gst::SECOND,).is_err() {
-                eprintln!("Seekition to {} failed", seconds);
+//            let seconds = (ind as f64 / 50.0).round() as u64;
+            let mseconds = scroll_video_button.get_value() * 20.0;
+            if state.playbin.as_ref().unwrap().seek_simple(gst::SeekFlags::FLUSH,
+            mseconds as u64 * gst::MSECOND,).is_err() {
+                eprintln!("Seekition to {} failed", mseconds);
             }
             state.al_ind = ind;
             state.is_anime = mem;
