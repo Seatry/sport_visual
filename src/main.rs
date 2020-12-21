@@ -137,7 +137,9 @@ fn run_video(uri: &str) -> (std::option::Option<gst::Element>, std::option::Opti
     gst::init().unwrap();
     let playbin = gst::ElementFactory::make("playbin", None).unwrap();
     playbin.set_property("uri", &uri).unwrap();
-
+    let videoflip = gst::ElementFactory::make("videoflip", None).unwrap();
+    videoflip.set_property_from_str("method", "clockwise");
+    playbin.set_property("video-filter", &videoflip).unwrap();
     let bus = playbin.get_bus().unwrap();
 
     playbin
@@ -576,7 +578,7 @@ fn main() {
     area_box.set_homogeneous(false);
     area_box.set_hexpand(true);
     area_box.set_vexpand(true);
-    let area_sub_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    let area_sub_box = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     area_sub_box.set_homogeneous(true);
     area_sub_box.set_hexpand(true);
     area_sub_box.set_vexpand(true);
@@ -789,7 +791,7 @@ fn main() {
     csv_dialog_filter.set_name("*.txt");
     csv_button.add_filter(&csv_dialog_filter);
 
-    let vbox = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    let vbox = gtk::Box::new(gtk::Orientation::Vertical, 0);
 
     csv_button.connect_file_set(clone!(state, animation_progress, start_button, vbox, pause_button, scroll_video_button; |csv_button| {
         let mut state = state.lock().unwrap();
