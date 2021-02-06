@@ -149,6 +149,12 @@ fn run_video(uri: &str) -> (std::option::Option<gst::Element>, std::option::Opti
     return (Some(playbin), Some(bus));
 }
 
+fn get_kr_val(last_time: f32, last_dg: f32, time: f32, dg: f32, full_time_kr: f32) -> f32 {
+    let rdg = -((last_dg - dg) * full_time_kr + (last_time * dg - time * last_dg)) / (time - last_time);
+//    println!("lt: {} - ldg: {}\n t: {} - dg {}\n rt: {} - rdg: {}\n\n", last_time, last_dg, time, dg, full_time_kr, rdg);
+    return rdg;
+}
+
 struct ModelState {
     model: std::vec::Vec<VertexModel>,
     is_render: bool,
@@ -804,13 +810,19 @@ fn main() {
         let mut iter = std::io::BufReader::new(file).lines();
 
         let mut list: Vec<(f32, f32, f32, f32)> = Vec::new();
-        let mut madgwick = Madgwick::new(0.03);
+        let mut madgwick = Madgwick::new(0.0);
         let to_rad = (PI / 180.0) as f64;
         let to_degree = 180.0 / PI;
 
         let mut yaws: std::vec::Vec<(f64, f64)> = vec![];
         let mut pitches: std::vec::Vec<(f64, f64)> = vec![];
         let mut rolls: std::vec::Vec<(f64, f64)> = vec![];
+
+        let mut last_pitch = 0.0f32;
+        let mut last_yaw = 0.0f32;
+        let mut last_roll = 0.0f32;
+        let mut last_time = 0.0f32;
+        let mut full_time_kr = 0.0f32;
 
         loop {
             let line = iter.next();
@@ -849,7 +861,19 @@ fn main() {
             ];
             madgwick.update(&gyro, &accel, &mag, dtime);
             let (roll, pitch, yaw, _q_z) = madgwick.q.to_euler_angles();
-            list.push((pitch*to_degree, yaw*to_degree, roll*to_degree, dtime as f32));
+
+            if time as f32 >= full_time_kr + 0.02{
+                full_time_kr += 0.02;
+                let pitch_kr = get_kr_val(last_time, last_pitch, time as f32, pitch, full_time_kr);
+                let yaw_kr = get_kr_val(last_time, last_yaw, time as f32, yaw, full_time_kr);
+                let roll_kr = get_kr_val(last_time, last_roll, time as f32, roll, full_time_kr);
+                list.push((pitch_kr*to_degree, yaw_kr*to_degree, roll_kr*to_degree, 0.02f32));
+            }
+            last_time = time as f32;
+            last_pitch = pitch;
+            last_yaw = yaw;
+            last_roll = roll;
+
             yaws.push((time, (yaw*to_degree) as f64));
             pitches.push((time, (pitch*to_degree) as f64));
             rolls.push((time, (roll*to_degree) as f64));
