@@ -819,7 +819,7 @@ fn main() {
         let mut iter = std::io::BufReader::new(file).lines();
 
         let mut list: Vec<(f32, f32, f32, f32)> = Vec::new();
-        let mut madgwick = Madgwick::new(0.3);
+        let mut madgwick = Madgwick::new(0.05);
         let to_rad = (PI / 180.0) as f64;
         let to_degree = 180.0 / PI;
 
@@ -852,20 +852,20 @@ fn main() {
             let gyro = [
                  f64::from_str(gyro_split.next().unwrap()).unwrap() * to_rad,
                  f64::from_str(gyro_split.next().unwrap()).unwrap() * to_rad,
-                -f64::from_str(gyro_split.next().unwrap()).unwrap() * to_rad,
+                 f64::from_str(gyro_split.next().unwrap()).unwrap() * to_rad,
             ];
 
             let accel = [
                  f64::from_str(accel_split.next().unwrap()).unwrap(),
                  f64::from_str(accel_split.next().unwrap()).unwrap(),
-                -f64::from_str(accel_split.next().unwrap()).unwrap(),
+                 f64::from_str(accel_split.next().unwrap()).unwrap(),
 
             ];
 
             let mag = [
                  f64::from_str(mag_split.next().unwrap()).unwrap(),
                 -f64::from_str(mag_split.next().unwrap()).unwrap(),
-                -f64::from_str(mag_split.next().unwrap()).unwrap(),
+                f64::from_str(mag_split.next().unwrap()).unwrap(),
 
             ];
             madgwick.update(&gyro, &accel, &mag, dtime);
@@ -876,7 +876,7 @@ fn main() {
                 let pitch_kr = get_kr_val(last_time, last_pitch*to_degree, time as f32, pitch*to_degree, full_time_kr);
                 let yaw_kr = get_kr_val(last_time, last_yaw*to_degree, time as f32, yaw*to_degree, full_time_kr);
                 let roll_kr = get_kr_val(last_time, last_roll*to_degree, time as f32, roll*to_degree, full_time_kr);
-                list.push((pitch_kr, yaw_kr, roll_kr, 0.02f32));
+                list.push((roll_kr, yaw_kr, pitch_kr, 0.02f32));
             }
             last_time = time as f32;
             last_pitch = pitch;

@@ -100,9 +100,9 @@ impl Madgwick {
 //        let gyroscope = Vector3::new(gyroscope[0], gyroscope[1], gyroscope[2]);
 //        let mut accelerometer = Vector3::new(accelerometer[0], accelerometer[1], accelerometer[2]);
 //        let mut magnetometer = Vector3::new(magnetometer[0], magnetometer[1], magnetometer[2]);
-        let gyroscope = Vector3::new(gyroscope[2], gyroscope[1], gyroscope[0]);
-        let mut accelerometer = Vector3::new(accelerometer[2], accelerometer[1], accelerometer[0]);
-        let mut magnetometer = Vector3::new(magnetometer[2], magnetometer[1], magnetometer[0]);
+        let gyroscope = Vector3::new(gyroscope[0], gyroscope[2], gyroscope[1]);
+        let mut accelerometer = Vector3::new(accelerometer[1], accelerometer[1], accelerometer[2]);
+        let mut magnetometer = Vector3::new(magnetometer[1], magnetometer[2], magnetometer[0]);
         accelerometer /= accelerometer.norm();
         magnetometer /= magnetometer.norm();
         let h = q.mul(Quaternion::new(0.0, magnetometer[0], magnetometer[1], magnetometer[2])).mul(q.conj());
