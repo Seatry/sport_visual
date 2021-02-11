@@ -123,6 +123,16 @@ impl Madgwick {
             -2.0*b[1]*q[3]+2.0*b[3]*q[1], 2.0*b[1]*q[2]+2.0*b[3]*q[0], 2.*b[1]*q[1]+2.0*b[3]*q[3],  -2.0*b[1]*q[0]+2.0*b[3]*q[2],
             2.0*b[1]*q[2],              2.0*b[1]*q[3]-4.0*b[3]*q[1], 2.0*b[1]*q[0]-4.0*b[3]*q[2],  2.0*b[1]*q[1]
             );
+//        let f = Vector3::new(
+//            2.0 * (q[1] * q[3] - q[0] * q[2]) - accelerometer[0],
+//            2.0*(q[0]*q[1] + q[2]*q[3]) - accelerometer[1],
+//            2.0*(0.5 - q[1].powi(2) - q[2].powi(2)) - accelerometer[2],
+//        );
+//        let j = Matrix3x4::new(
+//            -2.0*q[2],                  2.0*q[3],                  -2.0*q[0],                  2.0*q[1],
+//            2.0*q[1],                   2.0*q[0],                  2.0*q[3],                   2.0*q[2],
+//            0.0,                        -4.0*q[1],                 -4.0*q[2],                  0.0
+//        );
         let mut step = j.transpose() * f;
         step /= step.norm();
         let q_dot = (q.mul(Quaternion::new(0.0, gyroscope[0], gyroscope[1], gyroscope[2]))).scalar_mul(0.5).add(

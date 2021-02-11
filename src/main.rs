@@ -149,7 +149,16 @@ fn run_video(uri: &str) -> (std::option::Option<gst::Element>, std::option::Opti
     return (Some(playbin), Some(bus));
 }
 
-fn get_kr_val(last_time: f32, last_dg: f32, time: f32, dg: f32, full_time_kr: f32) -> f32 {
+fn get_kr_val(last_time: f32, last_dg: f32, time: f32, mut dg: f32, full_time_kr: f32) -> f32 {
+    if last_dg - dg > 180.0 {
+        dg = 360.0 - f32::abs(dg);
+        let rdg = -((last_dg - dg) * full_time_kr + (last_time * dg - time * last_dg)) / (time - last_time);
+        return -(360.0 - rdg);
+    } else if last_dg - dg < - 180.0 {
+        dg = -(360.0 - dg);
+        let rdg = -((last_dg - dg) * full_time_kr + (last_time * dg - time * last_dg)) / (time - last_time);
+        return 360.0 - f32::abs(rdg);
+    }
     let rdg = -((last_dg - dg) * full_time_kr + (last_time * dg - time * last_dg)) / (time - last_time);
 //    println!("lt: {} - ldg: {}\n t: {} - dg {}\n rt: {} - rdg: {}\n\n", last_time, last_dg, time, dg, full_time_kr, rdg);
     return rdg;
@@ -810,7 +819,7 @@ fn main() {
         let mut iter = std::io::BufReader::new(file).lines();
 
         let mut list: Vec<(f32, f32, f32, f32)> = Vec::new();
-        let mut madgwick = Madgwick::new(0.0);
+        let mut madgwick = Madgwick::new(0.3);
         let to_rad = (PI / 180.0) as f64;
         let to_degree = 180.0 / PI;
 
@@ -864,10 +873,10 @@ fn main() {
 
             if time as f32 >= full_time_kr + 0.02{
                 full_time_kr += 0.02;
-                let pitch_kr = get_kr_val(last_time, last_pitch, time as f32, pitch, full_time_kr);
-                let yaw_kr = get_kr_val(last_time, last_yaw, time as f32, yaw, full_time_kr);
-                let roll_kr = get_kr_val(last_time, last_roll, time as f32, roll, full_time_kr);
-                list.push((pitch_kr*to_degree, yaw_kr*to_degree, roll_kr*to_degree, 0.02f32));
+                let pitch_kr = get_kr_val(last_time, last_pitch*to_degree, time as f32, pitch*to_degree, full_time_kr);
+                let yaw_kr = get_kr_val(last_time, last_yaw*to_degree, time as f32, yaw*to_degree, full_time_kr);
+                let roll_kr = get_kr_val(last_time, last_roll*to_degree, time as f32, roll*to_degree, full_time_kr);
+                list.push((pitch_kr, yaw_kr, roll_kr, 0.02f32));
             }
             last_time = time as f32;
             last_pitch = pitch;
