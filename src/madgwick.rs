@@ -101,7 +101,7 @@ impl Madgwick {
 //        let mut accelerometer = Vector3::new(accelerometer[0], accelerometer[1], accelerometer[2]);
 //        let mut magnetometer = Vector3::new(magnetometer[0], magnetometer[1], magnetometer[2]);
         let gyroscope = Vector3::new(gyroscope[0], gyroscope[2], gyroscope[1]);
-        let mut accelerometer = Vector3::new(accelerometer[1], accelerometer[1], accelerometer[2]);
+        let mut accelerometer = Vector3::new(accelerometer[0], accelerometer[1], accelerometer[2]);
         let mut magnetometer = Vector3::new(magnetometer[1], magnetometer[2], magnetometer[0]);
         accelerometer /= accelerometer.norm();
         magnetometer /= magnetometer.norm();

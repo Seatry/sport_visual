@@ -13,8 +13,10 @@ extern crate glib;
 extern crate plotlib;
 extern crate gst;
 extern crate gst_video;
+extern crate scheduled_executor;
 
 use gst::prelude::*;
+use gtk::prelude::WidgetExtManual;
 use gst_video::prelude::*;
 use std::process;
 use std::os::raw::c_void;
@@ -143,25 +145,10 @@ fn run_video(uri: &str) -> (std::option::Option<gst::Element>, std::option::Opti
     let bus = playbin.get_bus().unwrap();
 
     playbin
-        .set_state(gst::State::Playing)
+        .set_state(gst::State::Paused)
         .expect("Unable to set the pipeline to the `Playing` state");
 
     return (Some(playbin), Some(bus));
-}
-
-fn get_kr_val(last_time: f32, last_dg: f32, time: f32, mut dg: f32, full_time_kr: f32) -> f32 {
-    if last_dg - dg > 180.0 {
-        dg = 360.0 - f32::abs(dg);
-        let rdg = -((last_dg - dg) * full_time_kr + (last_time * dg - time * last_dg)) / (time - last_time);
-        return -(360.0 - rdg);
-    } else if last_dg - dg < - 180.0 {
-        dg = -(360.0 - dg);
-        let rdg = -((last_dg - dg) * full_time_kr + (last_time * dg - time * last_dg)) / (time - last_time);
-        return 360.0 - f32::abs(rdg);
-    }
-    let rdg = -((last_dg - dg) * full_time_kr + (last_time * dg - time * last_dg)) / (time - last_time);
-//    println!("lt: {} - ldg: {}\n t: {} - dg {}\n rt: {} - rdg: {}\n\n", last_time, last_dg, time, dg, full_time_kr, rdg);
-    return rdg;
 }
 
 struct ModelState {
@@ -270,6 +257,8 @@ fn main() {
         arx: f32, ary: f32, arz: f32,
         playbin: std::option::Option<gst::Element>,
         bus: std::option::Option<gst::Bus>,
+        planner: std::option::Option<scheduled_executor::executor::TaskHandle>,
+        fps: i32,
     }
 
     let state_info: std::sync::Arc<std::sync::Mutex<Option<StateInfo>>> = std::sync::Arc::new(std::sync::Mutex::new(None));
@@ -429,6 +418,8 @@ fn main() {
                 arx: 0.0f32, ary: 0.0f32, arz: 0.0f32,
                 playbin: None,
                 bus: None,
+                planner: None,
+                fps: 0,
         });
         *state_info = Some(StateInfo {
                 display: display,
@@ -540,11 +531,11 @@ fn main() {
     let hbox = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     hbox.set_homogeneous(false);
 
-    let model_frame = gtk::Frame::new("Model");
+    let model_frame = gtk::Frame::new(Some("Model"));
     let model_box = gtk::Box::new(gtk::Orientation::Vertical, 5);
-    let lightning_frame = gtk::Frame::new("Lightning");
+    let lightning_frame = gtk::Frame::new(Some("Lightning"));
     let lightning_box = gtk::Box::new(gtk::Orientation::Vertical, 5);
-    let animation_frame = gtk::Frame::new("Animation");
+    let animation_frame = gtk::Frame::new(Some("Animation"));
     let animation_box = gtk::Box::new(gtk::Orientation::Vertical, 10);
 
     model_frame.add(&model_box);
@@ -605,10 +596,10 @@ fn main() {
     scale_box.set_vexpand(false);
     scale_box.set_border_width(5);
 
-    let scroll_video_button = gtk::Scale::new_with_range(gtk::Orientation::Horizontal, 0.0, 1.0, 0.05);
+    let scroll_video_button = gtk::Scale::with_range(gtk::Orientation::Horizontal, 0.0, 1.0, 0.05);
 
     let progress = gtk::ProgressBar::new();
-    progress.set_text("MODEL LOADING");
+    progress.set_text(Some("MODEL LOADING"));
     progress.set_fraction(0.0);
     progress.set_pulse_step(0.1);
     progress.set_show_text(true);
@@ -621,7 +612,7 @@ fn main() {
     progress_box.add(&progress);
     progress_box.set_border_width(5);
 
-    let light_button = gtk::CheckButton::new_with_label("enable");
+    let light_button = gtk::CheckButton::with_label(&"enable");
     light_button.clicked();
     light_button.connect_clicked(clone!(state, glarea; |_light_button| {
         let mut state = state.lock().unwrap();
@@ -631,7 +622,7 @@ fn main() {
     }));
     lightning_box.add(&light_button);
 
-    let int_button = gtk::SpinButton::new_with_range(0.0, 1.0, 0.05);
+    let int_button = gtk::SpinButton::with_range(0.0, 1.0, 0.05);
     int_button.set_value(1.0);
     int_button.connect_property_value_notify(clone!(state, glarea; |int_button| {
         let mut state = state.lock().unwrap();
@@ -640,11 +631,11 @@ fn main() {
         glarea.queue_render();
     }));
 
-    let int_label = gtk::Label::new("intensivity");
+    let int_label = gtk::Label::new(Some("intensivity"));
     int_box.add(&int_label);
     int_box.add(&int_button);
 
-    let amb_button = gtk::SpinButton::new_with_range(0.0, 1.0, 0.05);
+    let amb_button = gtk::SpinButton::with_range(0.0, 1.0, 0.05);
     amb_button.set_value(0.5);
     amb_button.connect_property_value_notify(clone!(state, glarea; |amb_button| {
         let mut state = state.lock().unwrap();
@@ -653,11 +644,11 @@ fn main() {
         glarea.queue_render();
     }));
 
-    let amb_label = gtk::Label::new("ambience");
+    let amb_label = gtk::Label::new(Some("ambience"));
     amb_box.add(&amb_label);
     amb_box.add(&amb_button);
 
-    let diff_button = gtk::SpinButton::new_with_range(0.0, 1.0, 0.05);
+    let diff_button = gtk::SpinButton::with_range(0.0, 1.0, 0.05);
     diff_button.set_value(1.0);
     diff_button.connect_property_value_notify(clone!(state, glarea; |diff_button| {
         let mut state = state.lock().unwrap();
@@ -666,11 +657,11 @@ fn main() {
         glarea.queue_render();
     }));
 
-    let diff_label = gtk::Label::new("diffuse");
+    let diff_label = gtk::Label::new(Some("diffuse"));
     diff_box.add(&diff_label);
     diff_box.add(&diff_button);
 
-    let spec_button = gtk::SpinButton::new_with_range(0.0, 1.0, 0.05);
+    let spec_button = gtk::SpinButton::with_range(0.0, 1.0, 0.05);
     spec_button.set_value(0.8);
     spec_button.connect_property_value_notify(clone!(state, glarea; |spec_button| {
         let mut state = state.lock().unwrap();
@@ -679,11 +670,11 @@ fn main() {
         glarea.queue_render();
     }));
 
-    let spec_label = gtk::Label::new("specaluraty");
+    let spec_label = gtk::Label::new(Some("specaluraty"));
     spec_box.add(&spec_label);
     spec_box.add(&spec_button);
 
-    let texture_button = gtk::CheckButton::new_with_label("");
+    let texture_button = gtk::CheckButton::with_label(&"");
     texture_button.clicked();
     texture_button.connect_clicked(clone!(state, glarea; |_texture_button| {
         let mut state = state.lock().unwrap();
@@ -692,7 +683,7 @@ fn main() {
         glarea.queue_render();
     }));
 
-    let scale_button = gtk::Scale::new_with_range(gtk::Orientation::Horizontal, 0.0, 1.0, 0.05);
+    let scale_button = gtk::Scale::with_range(gtk::Orientation::Horizontal, 0.0, 1.0, 0.05);
     scale_button.set_value(0.5);
     scale_button.connect_value_changed(clone!(state, glarea; |scale_button| {
         let mut state = state.lock().unwrap();
@@ -702,7 +693,7 @@ fn main() {
     }));
 
 
-    let color_button = gtk::ColorButton::new_with_rgba(
+    let color_button = gtk::ColorButton::with_rgba(
         &gdk::RGBA{red : 1.0, green : 1.0, blue : 1.0, alpha : 1.0});
     color_button.set_title("model`s colour");
     color_button.connect_color_set(clone!(state, glarea; |color_button| {
@@ -712,14 +703,14 @@ fn main() {
         glarea.queue_render();
     }));
 
-    let color_label = gtk::Label::new("colour");
+    let color_label = gtk::Label::new(Some("colour"));
     c_box.add(&color_label);
     c_box.add(&color_button);
 
-    let back_button = gtk::ColorButton::new_with_rgba(
+    let back_button = gtk::ColorButton::with_rgba(
         &gdk::RGBA{red : 0.0, green : 0.0, blue : 0.0, alpha : 1.0});
     back_button.set_title("glarea`s color");
-    back_button.set_name("background");
+//    back_button.set_name("background");
     back_button.connect_color_set(clone!(state, glarea; |back_button| {
         let mut state = state.lock().unwrap();
         let state = state.as_mut().unwrap();
@@ -727,14 +718,14 @@ fn main() {
         glarea.queue_render();
     }));
 
-    let back_label = gtk::Label::new("back");
+    let back_label = gtk::Label::new(Some("back"));
     b_box.add(&back_label);
     b_box.add(&back_button);
 
     let menu = gtk::Menu::new();
-    let open = gtk::MenuItem::new_with_label("Open");
-    let exit = gtk::MenuItem::new_with_label("Exit");
-    let about = gtk::MenuItem::new_with_label("About");
+    let open = gtk::MenuItem::with_label(&"Open");
+    let exit = gtk::MenuItem::with_label(&"Exit");
+    let about = gtk::MenuItem::with_label(&"About");
     menu.append(&open);
     menu.append(&exit);
     menu.append(&about);
@@ -752,7 +743,7 @@ fn main() {
     open_button.set_filename(std::path::Path::new("/home/alexander/IdeaProjects/sport_visual/models/union.stl"));
     let open_dialog_filter = gtk::FileFilter::new();
     open_dialog_filter.add_pattern("*.stl");
-    open_dialog_filter.set_name("*.stl");
+    open_dialog_filter.set_name(Some("*.stl"));
     open_button.add_filter(&open_dialog_filter);
     open_button.connect_file_set(clone!(model_state, progress; |open_button| {
         use std::thread;
@@ -772,7 +763,7 @@ fn main() {
             }));
     }));
     let open_box = gtk::Box::new(gtk::Orientation::Vertical, 1);
-    let open_label = gtk::Label::new("STL-file");
+    let open_label = gtk::Label::new(Some("STL-file"));
     open_box.add(&open_label);
     open_box.add(&open_button);
 
@@ -780,7 +771,7 @@ fn main() {
     model_box.add(&colours_box);
 
     let animation_progress = gtk::ProgressBar::new();
-    animation_progress.set_text("running animation");
+    animation_progress.set_text(Some("running animation"));
     animation_progress.set_fraction(0.0);
     animation_progress.set_pulse_step(0.25);
     animation_progress.set_show_text(true);
@@ -789,10 +780,10 @@ fn main() {
     animation_progress_box.set_border_width(5);
 
     let anime_control_box = gtk::Box::new(gtk::Orientation::Horizontal, 5);
-    let video_back_button = gtk::Button::new_from_icon_name("media-seek-backward", gtk::IconSize::__Unknown(0));
-    let pause_button = gtk::Button::new_from_icon_name("media-playback-pause", gtk::IconSize::__Unknown(0));
-    let start_button = gtk::Button::new_from_icon_name("media-playback-start", gtk::IconSize::__Unknown(0));
-    let video_forward_button = gtk::Button::new_from_icon_name("media-seek-forward", gtk::IconSize::__Unknown(0));
+    let video_back_button = gtk::Button::from_icon_name(Some("media-seek-backward"), gtk::IconSize::__Unknown(0));
+    let pause_button = gtk::Button::from_icon_name(Some("media-playback-pause"), gtk::IconSize::__Unknown(0));
+    let start_button = gtk::Button::from_icon_name(Some("media-playback-start"), gtk::IconSize::__Unknown(0));
+    let video_forward_button = gtk::Button::from_icon_name(Some("media-seek-forward"), gtk::IconSize::__Unknown(0));
     anime_control_box.pack_start(&video_back_button, true, true, 3);
     anime_control_box.pack_start(&pause_button, true, true, 0);
     anime_control_box.pack_start(&start_button, true, true, 0);
@@ -803,12 +794,15 @@ fn main() {
     csv_button.set_width_chars(19);
     let csv_dialog_filter = gtk::FileFilter::new();
     csv_dialog_filter.add_pattern("*.txt");
-    csv_dialog_filter.set_name("*.txt");
+    csv_dialog_filter.set_name(Some("*.txt"));
     csv_button.add_filter(&csv_dialog_filter);
 
     let vbox = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    let executor = scheduled_executor::executor::ThreadPoolExecutor::new(1).unwrap();
 
     csv_button.connect_file_set(clone!(state, animation_progress, start_button, vbox, pause_button, scroll_video_button; |csv_button| {
+        let state_orig = &state;
+
         let mut state = state.lock().unwrap();
         let state = state.as_mut().unwrap();
 
@@ -816,7 +810,11 @@ fn main() {
         let path_str = path.to_str().unwrap();
 
         let file = File::open(path_str).unwrap();
+        let file2 = File::open(path_str).unwrap();
         let mut iter = std::io::BufReader::new(file).lines();
+        let iter2 = std::io::BufReader::new(file2).lines();
+        let count = iter2.count();
+        println!("{}", count);
 
         let mut list: Vec<(f32, f32, f32, f32)> = Vec::new();
         let mut madgwick = Madgwick::new(0.05);
@@ -827,11 +825,65 @@ fn main() {
         let mut pitches: std::vec::Vec<(f64, f64)> = vec![];
         let mut rolls: std::vec::Vec<(f64, f64)> = vec![];
 
-        let mut last_pitch = 0.0f32;
-        let mut last_yaw = 0.0f32;
-        let mut last_roll = 0.0f32;
-        let mut last_time = 0.0f32;
-        let mut full_time_kr = 0.0f32;
+        if state.playbin.is_some() {
+            state.playbin.as_ref().unwrap().set_state(gst::State::Null).unwrap();
+            vbox.foreach(|w| {
+                vbox.remove(w);
+            })
+        }
+
+        let (playbin, bus) = run_video(&(std::string::String::from("file://") + &path_str.replace(".txt", ".mp4")));
+
+        state.playbin = playbin;
+        state.bus = bus;
+
+        let playbin = state.playbin.as_ref().unwrap();
+
+        use std::convert::TryInto;
+
+        let dur: std::option::Option<gst::ClockTime> = {
+            let mut q = gst::query::Duration::new(gst::Format::Time);
+            while !playbin.query(&mut q) {}
+            Some(q.get_result())
+        }
+        .and_then(|dur| dur.try_into().ok());
+
+        let dur = dur.unwrap().seconds().unwrap();
+        println!("{:?}", dur);
+//        let dur = 123;
+
+        state.fps = (count as f32 / 5.0 / dur as f32) as i32;
+
+        let mut real_time = 0.0 as f64;
+        let dlt = 1.0 / state.fps as f64;
+
+        println!("{} {} {}", state.fps, dlt, dlt * 1000.0);
+
+        if state.planner.is_some() {
+            state.planner.as_ref().unwrap().stop();
+        }
+
+        state.planner = Some(executor.schedule_fixed_rate(
+            std::time::Duration::from_millis(0),
+            std::time::Duration::from_millis((dlt * 1000.0) as u64),
+            clone!(state_orig; |_remote| {
+                let mut state = state_orig.lock().unwrap();
+                let state = state.as_mut().unwrap();
+                if state.is_anime {
+                    let ind = state.al_ind;
+                    if ind >= state.anime_list.len() {
+                        state.is_anime = false;
+                        state.al_ind += 1;
+                    } else {
+                        let angles = state.anime_list[ind];
+                        state.rx = angles.0 + state.arx;
+                        state.ry = angles.1 + state.ary;
+                        state.rz = angles.2 + state.arz;
+                        state.al_ind = ind + 1;
+                    }
+                }
+            }),
+        ));
 
         loop {
             let line = iter.next();
@@ -846,8 +898,8 @@ fn main() {
             let mut mag_split = mag_str.split(", ").into_iter();
             let dtime_str = ((iter.next()).unwrap().unwrap()).replace("dTime: ", "").replace(" us", "");
             let time_str = ((iter.next()).unwrap().unwrap()).replace("sTime: ", "").replace(" s", "");
-            let dtime = f64::from_str(&dtime_str).unwrap() / 1000000.0;
-            let time = f64::from_str(&time_str).unwrap();
+            let _dtime = f64::from_str(&dtime_str).unwrap() / 1000000.0;
+            let _time = f64::from_str(&time_str).unwrap();
 
             let gyro = [
                  f64::from_str(gyro_split.next().unwrap()).unwrap() * to_rad,
@@ -868,24 +920,14 @@ fn main() {
                 f64::from_str(mag_split.next().unwrap()).unwrap(),
 
             ];
-            madgwick.update(&gyro, &accel, &mag, dtime);
+            real_time += dlt;
+            madgwick.update(&gyro, &accel, &mag, dlt);
             let (roll, pitch, yaw, _q_z) = madgwick.q.to_euler_angles();
+            list.push((roll*to_degree, yaw*to_degree, pitch*to_degree, dlt as f32));
 
-            if time as f32 >= full_time_kr + 0.02{
-                full_time_kr += 0.02;
-                let pitch_kr = get_kr_val(last_time, last_pitch*to_degree, time as f32, pitch*to_degree, full_time_kr);
-                let yaw_kr = get_kr_val(last_time, last_yaw*to_degree, time as f32, yaw*to_degree, full_time_kr);
-                let roll_kr = get_kr_val(last_time, last_roll*to_degree, time as f32, roll*to_degree, full_time_kr);
-                list.push((roll_kr, yaw_kr, pitch_kr, 0.02f32));
-            }
-            last_time = time as f32;
-            last_pitch = pitch;
-            last_yaw = yaw;
-            last_roll = roll;
-
-            yaws.push((time, (yaw*to_degree) as f64));
-            pitches.push((time, (pitch*to_degree) as f64));
-            rolls.push((time, (roll*to_degree) as f64));
+            yaws.push((real_time, (yaw*to_degree) as f64));
+            pitches.push((real_time, (pitch*to_degree) as f64));
+            rolls.push((real_time, (roll*to_degree) as f64));
         }
 
         let s1: Plot = Plot::new(rolls).line_style(
@@ -923,18 +965,6 @@ fn main() {
         scroll_video_button.set_increments((state.anime_list.len() as f64 / 30.0).ceil(), 0.0);
         scroll_video_button.set_value(0.0);
 
-        if state.playbin.is_some() {
-            state.playbin.as_ref().unwrap().set_state(gst::State::Null).unwrap();
-            vbox.foreach(|w| {
-                vbox.remove(w);
-            })
-        }
-
-        let (playbin, bus) = run_video(&(std::string::String::from("file://") + &path_str.replace(".txt", ".mp4")));
-        state.playbin = playbin;
-        state.bus = bus;
-
-        let playbin = state.playbin.as_ref().unwrap();
         use gdk::WindowExt;
 
         let video_window = gtk::DrawingArea::new();
@@ -976,15 +1006,24 @@ fn main() {
         });
         vbox.pack_start(&video_window, true, true, 0);
         vbox.show_all();
-        state.is_anime = true;
-    }));
 
-    scroll_video_button.connect_format_value(move |scroll_video_button, _|{
-        let mut seconds = (scroll_video_button.get_value() / 50.0).round();
-        let minutes = (seconds / 60.0).floor();
-        seconds = seconds % 60.0;
-        return format!("{}:{}", minutes, seconds);
-    });
+        state.is_anime = true;
+        state.playbin.as_ref().unwrap().change_state(gst::StateChange::PausedToPlaying).unwrap();
+    }));
+    let _x = 0.0;
+    scroll_video_button.connect_format_value(clone!(state; |scroll_video_button, _x|{
+        let mut state = state.lock().unwrap();
+        let state = state.as_mut();
+        if state.is_some() {
+            let state = state.unwrap();
+            let mut seconds = (scroll_video_button.get_value() / state.fps as f64).round();
+            let minutes = (seconds / 60.0).floor();
+            seconds = seconds % 60.0;
+//            println!("{}, {}, {}", scroll_video_button.get_value(), minutes, seconds);
+            return format!("{}:{}", minutes, seconds);
+        }
+        return format!("{}:{}", 0, 0);
+    }));
 
 //    scroll_video_button.connect_value_changed(clone!(state; |scroll_video_button| {
 //        let mut state = state.borrow_mut();
@@ -997,7 +1036,7 @@ fn main() {
 //    }));
 
     let csv_box = gtk::Box::new(gtk::Orientation::Vertical, 1);
-    let csv_label = gtk::Label::new("Animation-file");
+    let csv_label = gtk::Label::new(Some("Animation-file"));
     csv_box.add(&csv_label);
     csv_box.add(&csv_button);
 
@@ -1038,9 +1077,9 @@ fn main() {
         if state.is_anime || start_button.is_sensitive() {
             let mem = state.is_anime;
             state.is_anime = false;
-            let n = 50.0 * 10.0; // 10 sec
+            let n = state.fps as f64 * 10.0; // 10 sec
             state.al_ind += n as usize;
-            let mseconds = (scroll_video_button.get_value() * 20.0) as u64 + 10*1000;
+            let mseconds = (scroll_video_button.get_value() * (1.0 / (state.fps as f64) * 1000.0)) as u64 + 10*1000;
             scroll_video_button.set_value(scroll_video_button.get_value() + n);
             if state.playbin.as_ref().unwrap().seek_simple(gst::SeekFlags::FLUSH,
             mseconds * gst::MSECOND,).is_err() {
@@ -1061,13 +1100,13 @@ fn main() {
         if state.is_anime || start_button.is_sensitive() {
             let mem = state.is_anime;
             state.is_anime = false;
-            let n = 50.0 * 10.0; // 10 sec
+            let n = state.fps as f64 * 10.0; // 10 sec
             if state.al_ind < n as usize {
                 state.al_ind = 0;
             } else {
                 state.al_ind -= n as usize;
             }
-            let mut mseconds = (scroll_video_button.get_value() * 20.0) as u64;
+            let mut mseconds = (scroll_video_button.get_value() * (1.0 / (state.fps as f64) * 1000.0)) as u64;
             scroll_video_button.set_value(scroll_video_button.get_value() - n);
             if mseconds < 10*1000 {
                 mseconds = 0;
@@ -1096,7 +1135,7 @@ fn main() {
     open_texture.set_filename(std::path::Path::new("/home/alexander/IdeaProjects/sport_visual/textures/t2.jpg"));
     let open_texture_filter = gtk::FileFilter::new();
     open_texture_filter.add_pattern("*.jpg");
-    open_texture_filter.set_name("*.jpg");
+    open_texture_filter.set_name(Some("*.jpg"));
     open_texture.add_filter(&open_texture_filter);
     open_texture.connect_file_set(clone!(state_info; |open_texture| {
             let mut state_info = state_info.lock().unwrap();
@@ -1116,7 +1155,7 @@ fn main() {
     }));
 
     let texture_box = gtk::Box::new(gtk::Orientation::Vertical, 1);
-    let texture_label = gtk::Label::new("JPG-file");
+    let texture_label = gtk::Label::new(Some("JPG-file"));
     let texture_sub_box = gtk::Box::new(gtk::Orientation::Horizontal, 3);
     texture_sub_box.add(&texture_button);
     texture_sub_box.add(&open_texture);
@@ -1130,7 +1169,7 @@ fn main() {
                                              Some(&window), gtk::FileChooserAction::Open);
         let open_dialog_filter = gtk::FileFilter::new();
         open_dialog_filter.add_pattern("*.stl");
-        open_dialog_filter.set_name("*.stl");
+        open_dialog_filter.set_name(Some("*.stl"));
         open_dialog.add_filter(&open_dialog_filter);
         open_dialog.connect_file_activated(clone!(model_state, progress, open_button; |open_dialog| {
         use std::thread;
@@ -1149,13 +1188,15 @@ fn main() {
                 model_state.lock().unwrap().is_render = false;
             }));
         open_button.set_filename(std::path::Path::new(path.to_str().unwrap()));
-            open_dialog.destroy();
+            unsafe{
+                open_dialog.destroy();
+            }
         }));
         open_dialog.run();
     }));
 
     let menu_bar = gtk::MenuBar::new();
-    let file = gtk::MenuItem::new_with_label("File");
+    let file = gtk::MenuItem::with_label(&"File");
     file.set_submenu(Some(&menu));
     menu_bar.append(&file);
 
@@ -1164,19 +1205,19 @@ fn main() {
         let mut state = state.lock().unwrap();
         let state = state.as_mut().unwrap();
         match keyval {
-            gdk::enums::key::Escape => gtk::main_quit(),
-            gdk::enums::key::a => if state.is_light { state.tx -= 0.1 },
-            gdk::enums::key::d => if state.is_light { state.tx += 0.1 },
-            gdk::enums::key::s => if state.is_light { state.ty -= 0.1 },
-            gdk::enums::key::w => if state.is_light { state.ty += 0.1 },
-            gdk::enums::key::f => if state.is_light { state.tz -= 0.1 },
-            gdk::enums::key::r => if state.is_light { state.tz += 0.1 },
-            gdk::enums::key::_4 => state.rx -= 5.0,
-            gdk::enums::key::_3 => state.rx += 5.0,
-            gdk::enums::key::_2 => state.ry += 5.0,
-            gdk::enums::key::_1 => state.ry -= 5.0,
-            gdk::enums::key::_5 => state.rz += 5.0,
-            gdk::enums::key::_6 => state.rz -= 5.0,
+            gdk::keys::constants::Escape => gtk::main_quit(),
+            gdk::keys::constants::a => if state.is_light { state.tx -= 0.1 },
+            gdk::keys::constants::d => if state.is_light { state.tx += 0.1 },
+            gdk::keys::constants::s => if state.is_light { state.ty -= 0.1 },
+            gdk::keys::constants::w => if state.is_light { state.ty += 0.1 },
+            gdk::keys::constants::f => if state.is_light { state.tz -= 0.1 },
+            gdk::keys::constants::r => if state.is_light { state.tz += 0.1 },
+            gdk::keys::constants::_4 => state.rx -= 5.0,
+            gdk::keys::constants::_3 => state.rx += 5.0,
+            gdk::keys::constants::_2 => state.ry += 5.0,
+            gdk::keys::constants::_1 => state.ry -= 5.0,
+            gdk::keys::constants::_5 => state.rz += 5.0,
+            gdk::keys::constants::_6 => state.rz -= 5.0,
             _ => (),
         }
         glarea.queue_render();
@@ -1205,12 +1246,12 @@ fn main() {
 
     vbox.hide();
 
-    gtk::timeout_add(1, clone!(glarea; || {
+    glib::timeout_add_local(1, clone!(glarea; || {
         glarea.queue_render();
         return glib::Continue(true);
     }));
 
-    gtk::timeout_add(1000, clone!(model_state, state, scroll_video_button; || {
+    glib::timeout_add_local(2000, clone!(model_state, state, scroll_video_button; || {
         if !model_state.lock().unwrap().is_render {
             progress.set_visible(false);
         } else  {
@@ -1218,12 +1259,14 @@ fn main() {
         }
         let mut state = state.lock().unwrap();
         let state = state.as_mut().unwrap();
+
+
         let ind = scroll_video_button.get_value() as usize;
-        if state.al_ind + 55 < ind || (state.al_ind > 55 && state.al_ind > ind + 55 ) {
+        if state.al_ind + (state.fps as usize * 4) < ind || (state.al_ind > (state.fps as usize * 4) && state.al_ind > ind + (state.fps as usize * 4) ) {
             let mem = state.is_anime;
             state.is_anime = false;
-//            let seconds = (ind as f64 / 50.0).round() as u64;
-            let mseconds = scroll_video_button.get_value() * 20.0;
+//            let seconds = (ind as f64 / state.fps as f64).round() as u64;
+            let mseconds = scroll_video_button.get_value() * (1.0 / (state.fps as f64) * 1000.0);
             if state.playbin.as_ref().unwrap().seek_simple(gst::SeekFlags::FLUSH,
             mseconds as u64 * gst::MSECOND,).is_err() {
                 eprintln!("Seekition to {} failed", mseconds);
@@ -1236,6 +1279,7 @@ fn main() {
                 state.playbin.as_ref().unwrap().set_state(gst::State::Paused).unwrap();
             }
         }
+//        println!("ind = {}", state.al_ind);
         scroll_video_button.set_value(state.al_ind as f64);
         if state.al_ind > state.anime_list.len() {
             animation_progress.set_visible(false);
@@ -1246,32 +1290,6 @@ fn main() {
         }
             return glib::Continue(true);
     }));
-
-//    use std::time::SystemTime;
-//    let mut now = SystemTime::now();
-
-    extern crate periodic;
-    use std::time::Duration;
-
-    let mut planner = periodic::Planner::new();
-    planner.add(clone!(state; || {
-        let mut state = state.lock().unwrap();
-        let state = state.as_mut().unwrap();
-        if state.is_anime {
-            let ind = state.al_ind;
-            if ind >= state.anime_list.len() {
-                state.is_anime = false;
-                state.al_ind += 1;
-            } else {
-                let angles = state.anime_list[ind];
-                state.rx = angles.0 + state.arx;
-                state.ry = angles.1 + state.ary;
-                state.rz = angles.2 + state.arz;
-                state.al_ind = ind + 1;
-            }
-        }
-    }), periodic::Every::new(Duration::from_millis(20)), );
-    planner.start();
 
     gtk::main();
 }

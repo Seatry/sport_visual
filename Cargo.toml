@@ -3,6 +3,7 @@ name = "sport_visual"
 version = "0.1.0"
 authors = ["Sokolov A.S."]
 
+
 [lib]
 name = "geometry_kernel"
 path = "src/lib.rs"
@@ -32,16 +33,16 @@ glium = "*"
 glm = "*"
 csv = "1.1"
 image = "*"
-gdk = "0.10.0"
+gdk = "0.13.2"
 epoxy = "0.0.3"
 shared_library = "0.1.7"
 libc = "0.1"
-glib = "0.7.0"
+glib = "0.10.3"
+scheduled-executor = "0.4.0"
 nalgebra = "*"
 plotlib = "*"
-gst = {package = "gstreamer"}
+gst = {package = "gstreamer", version="0.16.0"}
 gst_video = {package = "gstreamer-video"}
-periodic = "0.1.1"
 [dependencies.gtk]
-version = "0.6.0"
+version = "0.9.0"
 features = ["v3_18"]
