@@ -260,6 +260,11 @@ fn main() {
         bus: std::option::Option<gst::Bus>,
         planner: std::option::Option<scheduled_executor::executor::TaskHandle>,
         fps: i32,
+        yaws: std::vec::Vec<(f64, f64)>,
+        pitches: std::vec::Vec<(f64, f64)>,
+        rolls: std::vec::Vec<(f64, f64)>,
+        accs: std::vec::Vec<(f64, f64)>,
+        speeds: std::vec::Vec<(f64, f64)>,
     }
 
     let state_info: std::sync::Arc<std::sync::Mutex<Option<StateInfo>>> = std::sync::Arc::new(std::sync::Mutex::new(None));
@@ -421,6 +426,12 @@ fn main() {
                 bus: None,
                 planner: None,
                 fps: 0,
+                yaws: vec![],
+                pitches: vec![],
+                rolls: vec![],
+                accs: vec![],
+                speeds: vec![],
+
         });
         *state_info = Some(StateInfo {
                 display: display,
@@ -794,15 +805,19 @@ fn main() {
     use gtk::Adjustment;
     let jump_info_window = gtk::Box::new(gtk::Orientation::Vertical, 0);
     let jump_info_scroll = gtk::ScrolledWindow::new::<Adjustment, Adjustment>(None, None);
-//        Some(&gtk::Adjustment::new(0.0, 0.0, 20.0, 5.0, 5.0, 20.0)), Some(&gtk::Adjustment::new(0.0, 0.0, 100.0, 5.0, 5.0, 100.0)));
     jump_info_scroll.set_min_content_height(100);
     let jump_info = gtk::TextView::new();
     jump_info.set_editable(false);
-//    jump_info.set_border_window_size(gtk::TextWindowType::Bottom, 100);
-//    jump_info.set_vadjustment(Some(&gtk::Adjustment::new(0.0, 0.0, 20.0, 5.0, 5.0, 20.0)));
-//    jump_info.set_vscroll_policy(gtk::ScrollablePolicy::Minimum);
     jump_info_scroll.add(&jump_info);
     jump_info_window.pack_start(&jump_info_scroll, true, true, 0);
+
+    let graph_box = gtk::Box::new(gtk::Orientation::Horizontal, 5);
+    let graph_start = gtk::SpinButton::with_range(0.0, 120.0, 2.0);
+    let graph_end = gtk::SpinButton::with_range(0.0, 120.0, 2.0);
+    let graph_button = gtk::Button::with_label("Draw graphs");
+    graph_box.pack_start(&graph_start, true, true, 0);
+    graph_box.pack_start(&graph_end, true, true, 0);
+    graph_box.pack_start(&graph_button, true, true, 0);
 
     let csv_button = gtk::FileChooserButton::new("load animation", gtk::FileChooserAction::Open);
     csv_button.set_width_chars(19);
@@ -814,7 +829,7 @@ fn main() {
     let vbox = gtk::Box::new(gtk::Orientation::Vertical, 0);
     let executor = scheduled_executor::executor::ThreadPoolExecutor::new(1).unwrap();
 
-    csv_button.connect_file_set(clone!(state, animation_progress, start_button, vbox, pause_button, scroll_video_button, jump_info; |csv_button| {
+    csv_button.connect_file_set(clone!(state, animation_progress, start_button, vbox, pause_button, scroll_video_button, jump_info, graph_start, graph_end; |csv_button| {
         let state_orig = &state;
 
         let mut state = state.lock().unwrap();
@@ -845,6 +860,8 @@ fn main() {
         let mut yaws: std::vec::Vec<(f64, f64)> = vec![];
         let mut pitches: std::vec::Vec<(f64, f64)> = vec![];
         let mut rolls: std::vec::Vec<(f64, f64)> = vec![];
+        let mut accs: std::vec::Vec<(f64, f64)> = vec![];
+        let mut speeds: std::vec::Vec<(f64, f64)> = vec![];
 
         if state.playbin.is_some() {
             state.playbin.as_ref().unwrap().set_state(gst::State::Null).unwrap();
@@ -871,7 +888,9 @@ fn main() {
 
         let dur = dur.unwrap().seconds().unwrap();
         println!("{:?}", dur);
-//        let dur = 123;
+        graph_start.set_range(0.0, dur as f64);
+        graph_end.set_range(0.0, dur as f64);
+        graph_end.set_value(dur as f64);
 
         state.fps = (count as f32 / 5.0 / dur as f32) as i32;
 
@@ -965,27 +984,16 @@ fn main() {
             yaws.push((real_time, (yaw*to_degree) as f64));
             pitches.push((real_time, (pitch*to_degree) as f64));
             rolls.push((real_time, (roll*to_degree) as f64));
+            accs.push((real_time, accel[1]));
+            speeds.push((real_time, w.q[2]));
         }
 
         buffer.set_text(&txt);
-
-        let s1: Plot = Plot::new(rolls).line_style(
-            LineStyle::new().colour("#ff0000")).legend("roll".to_string());
-
-        let s2: Plot = Plot::new(pitches).line_style(
-            LineStyle::new().colour("#0000ff")).legend("pitch".to_string());
-
-        let s3: Plot = Plot::new(yaws).line_style(
-            LineStyle::new().colour("#00ff00")).legend("yaw".to_string());
-
-        let v = ContinuousView::new()
-            .add(s1)
-            .add(s2)
-            .add(s3)
-            .x_label("Time (s)")
-            .y_label("Angle (dgr)");
-
-        Page::single(&v).save(path_str.replace(".txt", ".svg")).unwrap();
+        state.yaws = yaws;
+        state.pitches = pitches;
+        state.rolls = rolls;
+        state.accs = accs;
+        state.speeds = speeds;
 
         state.anime_list = list;
         state.al_ind = 0;
@@ -1058,21 +1066,11 @@ fn main() {
             let mut seconds = (scroll_video_button.get_value() / state.fps as f64).round();
             let minutes = (seconds / 60.0).floor();
             seconds = seconds % 60.0;
-//            println!("{}, {}, {}", scroll_video_button.get_value(), minutes, seconds);
             return format!("{}:{}", minutes, seconds);
         }
         return format!("{}:{}", 0, 0);
     }));
 
-//    scroll_video_button.connect_value_changed(clone!(state; |scroll_video_button| {
-//        let mut state = state.borrow_mut();
-//        let state = state.as_mut().unwrap();
-//        let seconds = (scroll_video_button.get_value() / 50.0).ceil();
-//        if state.playbin.as_ref().unwrap().seek_simple(gst::SeekFlags::FLUSH | gst::SeekFlags::KEY_UNIT,
-//            seconds as u64 * gst::SECOND,).is_err() {
-//                eprintln!("Seekition to {} failed", seconds);
-//            }
-//    }));
 
     let csv_box = gtk::Box::new(gtk::Orientation::Vertical, 1);
     let csv_label = gtk::Label::new(Some("Animation-file"));
@@ -1165,8 +1163,77 @@ fn main() {
         }
     }));
 
+    graph_button.connect_clicked(clone!(state, csv_button, graph_start, graph_end; |_graph_button| {
+        let mut state = state.lock().unwrap();
+        let state = state.as_mut().unwrap();
+        let rolls = &state.rolls;
+        let pitches = &state.pitches;
+        let yaws = &state.yaws;
+        let accs = &state.accs;
+        let speeds = &state.speeds;
+        let path = csv_button.get_filename();
+        let start = graph_start.get_value();
+        let end = graph_end.get_value();
+        if path.is_some() && start < end {
+            let rolls = rolls.iter().filter(|x| x.0 >= start && x.0 <= end).map(|x| *x).collect();
+            let pitches = pitches.iter().filter(|x| x.0 >= start && x.0 <= end).map(|x| *x).collect();
+            let yaws = yaws.iter().filter(|x| x.0 >= start && x.0 <= end).map(|x| *x).collect();
+            let accs = accs.iter().filter(|x| x.0 >= start && x.0 <= end).map(|x| *x).collect();
+            let speeds = speeds.iter().filter(|x| x.0 >= start && x.0 <= end).map(|x| *x).collect();
+
+            let start_str = format!("{}", start);
+            let end_str = format!("{}", end);
+
+            let path = path.unwrap();
+            let path_str = path.to_str().unwrap().replace(".txt", "");
+
+            use std::thread;
+            thread::spawn(move || {
+
+
+                let s1: Plot = Plot::new(rolls).line_style(
+                    LineStyle::new().colour("#ff0000")).legend("roll".to_string());
+
+                let s2: Plot = Plot::new(pitches).line_style(
+                    LineStyle::new().colour("#0000ff")).legend("pitch".to_string());
+
+                let s3: Plot = Plot::new(yaws).line_style(
+                    LineStyle::new().colour("#00ff00")).legend("yaw".to_string());
+
+                let v = ContinuousView::new()
+                    .add(s1)
+                    .add(s2)
+                    .add(s3)
+                    .x_label("Time (s)")
+                    .y_label("Angle (dgr)");
+
+                Page::single(&v).save("".to_owned() + &path_str + "_angels_" + &start_str + "_" + &end_str + ".svg").unwrap();
+
+                let s1: Plot = Plot::new(accs).line_style(
+                    LineStyle::new().colour("#ff0000")).legend("accel".to_string());
+                let v = ContinuousView::new()
+                    .add(s1)
+                    .x_label("Time (s)")
+                    .y_label("Accel (g)");
+
+                Page::single(&v).save("".to_owned() + &path_str + "_accel_" + &start_str + "_" + &end_str + ".svg").unwrap();
+
+                let s1: Plot = Plot::new(speeds).line_style(
+                    LineStyle::new().colour("#ff0000")).legend("speed".to_string());
+                let v = ContinuousView::new()
+                    .add(s1)
+                    .x_label("Time (s)")
+                    .y_label("Speed (dgr/s)");
+
+                Page::single(&v).save("".to_owned() + &path_str + "_speed_" + &start_str + "_" + &end_str + ".svg").unwrap();
+            });
+        }
+
+    }));
+
     animation_box.add(&csv_box);
     animation_box.add(&anime_control_box);
+    animation_box.add(&graph_box);
     animation_box.add(&jump_info_window);
     animation_box.add(&animation_progress_box);
 
