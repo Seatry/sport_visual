@@ -23,6 +23,7 @@ use std::os::raw::c_void;
 
 
 mod madgwick;
+use madgwick::Quaternion;
 
 use plotlib::page::Page;
 use plotlib::repr::Plot;
@@ -790,6 +791,19 @@ fn main() {
     anime_control_box.pack_start(&video_forward_button, true, true, 3);
     start_button.set_sensitive(false);
 
+    use gtk::Adjustment;
+    let jump_info_window = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    let jump_info_scroll = gtk::ScrolledWindow::new::<Adjustment, Adjustment>(None, None);
+//        Some(&gtk::Adjustment::new(0.0, 0.0, 20.0, 5.0, 5.0, 20.0)), Some(&gtk::Adjustment::new(0.0, 0.0, 100.0, 5.0, 5.0, 100.0)));
+    jump_info_scroll.set_min_content_height(100);
+    let jump_info = gtk::TextView::new();
+    jump_info.set_editable(false);
+//    jump_info.set_border_window_size(gtk::TextWindowType::Bottom, 100);
+//    jump_info.set_vadjustment(Some(&gtk::Adjustment::new(0.0, 0.0, 20.0, 5.0, 5.0, 20.0)));
+//    jump_info.set_vscroll_policy(gtk::ScrollablePolicy::Minimum);
+    jump_info_scroll.add(&jump_info);
+    jump_info_window.pack_start(&jump_info_scroll, true, true, 0);
+
     let csv_button = gtk::FileChooserButton::new("load animation", gtk::FileChooserAction::Open);
     csv_button.set_width_chars(19);
     let csv_dialog_filter = gtk::FileFilter::new();
@@ -800,7 +814,7 @@ fn main() {
     let vbox = gtk::Box::new(gtk::Orientation::Vertical, 0);
     let executor = scheduled_executor::executor::ThreadPoolExecutor::new(1).unwrap();
 
-    csv_button.connect_file_set(clone!(state, animation_progress, start_button, vbox, pause_button, scroll_video_button; |csv_button| {
+    csv_button.connect_file_set(clone!(state, animation_progress, start_button, vbox, pause_button, scroll_video_button, jump_info; |csv_button| {
         let state_orig = &state;
 
         let mut state = state.lock().unwrap();
@@ -820,6 +834,13 @@ fn main() {
         let mut madgwick = Madgwick::new(0.05);
         let to_rad = (PI / 180.0) as f64;
         let to_degree = 180.0 / PI;
+
+        let mut turn: f64 = 0.0;
+        let mut jump_time: f64 = 0.0;
+        let mut qprev = Quaternion::new(1.0, 0.0, 0.0, 0.0);
+        let buffer = jump_info.get_buffer().unwrap();
+        let mut txt = "Time     Dur      Height    Dgr    Turn\n".to_owned();
+
 
         let mut yaws: std::vec::Vec<(f64, f64)> = vec![];
         let mut pitches: std::vec::Vec<(f64, f64)> = vec![];
@@ -920,15 +941,33 @@ fn main() {
                 f64::from_str(mag_split.next().unwrap()).unwrap(),
 
             ];
+
             real_time += dlt;
             madgwick.update(&gyro, &accel, &mag, dlt);
             let (roll, pitch, yaw, _q_z) = madgwick.q.to_euler_angles();
             list.push((roll*to_degree, yaw*to_degree, pitch*to_degree, dlt as f32));
 
+            let w = madgwick.q.derivative(qprev, dlt);
+            qprev = madgwick.q;
+
+            if accel[1] > 0.0 && turn != 0.0 {
+                if turn * to_degree as f64 > 1.0 {
+                    txt = format!("{}{:.2},   {:.2},   {:.2},   {:.2},   {:.2}\n", txt, real_time, jump_time, (980.0 * jump_time.powi(2)) / 8.0, turn * to_degree as f64, turn * to_degree as f64 / 360.0);
+                }
+                turn = 0.0;
+                jump_time = 0.0;
+            }
+            if accel[1] < -0.7 {
+                jump_time += dlt;
+                turn += w.q[2] * dlt;
+            }
+
             yaws.push((real_time, (yaw*to_degree) as f64));
             pitches.push((real_time, (pitch*to_degree) as f64));
             rolls.push((real_time, (roll*to_degree) as f64));
         }
+
+        buffer.set_text(&txt);
 
         let s1: Plot = Plot::new(rolls).line_style(
             LineStyle::new().colour("#ff0000")).legend("roll".to_string());
@@ -1128,6 +1167,7 @@ fn main() {
 
     animation_box.add(&csv_box);
     animation_box.add(&anime_control_box);
+    animation_box.add(&jump_info_window);
     animation_box.add(&animation_progress_box);
 
     let open_texture = gtk::FileChooserButton::new("load texture", gtk::FileChooserAction::Open);

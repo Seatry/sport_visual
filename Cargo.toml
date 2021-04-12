@@ -45,4 +45,4 @@ gst = {package = "gstreamer", version="0.16.0"}
 gst_video = {package = "gstreamer-video"}
 [dependencies.gtk]
 version = "0.9.0"
-features = ["v3_18"]
+features = ["v3_22"]

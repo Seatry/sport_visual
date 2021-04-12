@@ -3,15 +3,16 @@ use std::fmt;
 use std::ops::Index;
 use self::nalgebra::{Vector4, Vector6, Matrix6x4, Vector3, Vector2};
 
+#[derive(Copy, Clone)]
 pub struct Quaternion {
-    q: Vector4<f64>,
+    pub q: Vector4<f64>,
 }
 
 impl Quaternion {
     fn conj(&self) -> Quaternion {
       return Quaternion {q: Vector4::new(self.q[0], -self.q[1], -self.q[2], -self.q[3])};
     }
-    fn new(w: f64, x: f64, y: f64, z:f64) -> Quaternion {
+    pub fn new(w: f64, x: f64, y: f64, z:f64) -> Quaternion {
         Quaternion {q: Vector4::new(w, x, y, z)}
     }
     fn q_new(q: Vector4<f64>) -> Quaternion {
@@ -33,6 +34,17 @@ impl Quaternion {
 //    fn scalar_add(&self, other: f64) -> Quaternion {
 //        return Quaternion::q_new(self.q.add_scalar(other));
 //    }
+
+    pub fn derivative(&self, qprev: Quaternion, dt: f64) -> Quaternion {
+        let q = &self.q;
+        let q1_0 = (q[0] - qprev[0]) * 2.0 / dt;
+        let q1_1 = (q[1] - qprev[1]) * 2.0 / dt;
+        let q1_2 = (q[2] - qprev[2]) * 2.0 / dt;
+        let q1_3 = (q[3] - qprev[3]) * 2.0 / dt;
+        let q1 = Quaternion {q: Vector4::new(q1_0, q1_1, q1_2, q1_3)};
+        return q1.mul(self.conj());
+    }
+
     pub fn to_euler_angles(&self) -> (f32, f32, f32, f32) {
 //        let q = &self.q;
 //        let factor = q[1] * q[2] + q[3] * q[0];
@@ -85,6 +97,8 @@ impl fmt::Display for Quaternion {
         write!(f, "Quaternion({}, {}, {}, {})", self.q[0], self.q[1], self.q[2], self.q[3])
     }
 }
+
+
 
 pub struct Madgwick {
     pub q: Quaternion,
