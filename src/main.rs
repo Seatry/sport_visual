@@ -815,9 +815,9 @@ fn main() {
     let graph_start = gtk::SpinButton::with_range(0.0, 120.0, 2.0);
     let graph_end = gtk::SpinButton::with_range(0.0, 120.0, 2.0);
     let graph_button = gtk::Button::with_label("Draw graphs");
-    graph_box.pack_start(&graph_start, true, true, 0);
+    graph_box.pack_start(&graph_start, true, true, 3);
     graph_box.pack_start(&graph_end, true, true, 0);
-    graph_box.pack_start(&graph_button, true, true, 0);
+    graph_box.pack_start(&graph_button, true, true, 3);
 
     let csv_button = gtk::FileChooserButton::new("load animation", gtk::FileChooserAction::Open);
     csv_button.set_width_chars(19);
