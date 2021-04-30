@@ -862,6 +862,7 @@ fn main() {
         let mut rolls: std::vec::Vec<(f64, f64)> = vec![];
         let mut accs: std::vec::Vec<(f64, f64)> = vec![];
         let mut speeds: std::vec::Vec<(f64, f64)> = vec![];
+        let mut peaks: std::vec::Vec<usize> = vec![];
 
         if state.playbin.is_some() {
             state.playbin.as_ref().unwrap().set_state(gst::State::Null).unwrap();
@@ -893,6 +894,9 @@ fn main() {
         graph_end.set_value(dur as f64);
 
         state.fps = (count as f32 / 5.0 / dur as f32) as i32;
+        if state.fps < 50 {
+            state.fps = 50;
+        }
 
         let mut real_time = 0.0 as f64;
         let dlt = 1.0 / state.fps as f64;
@@ -925,6 +929,7 @@ fn main() {
             }),
         ));
 
+        let mut i = 0;
         loop {
             let line = iter.next();
             if line.is_none() {
@@ -969,23 +974,48 @@ fn main() {
             let w = madgwick.q.derivative(qprev, dlt);
             qprev = madgwick.q;
 
-            if accel[1] > 0.0 && turn != 0.0 {
-                if turn * to_degree as f64 > 1.0 {
-                    txt = format!("{}{:.2},   {:.2},   {:.2},   {:.2},   {:.2}\n", txt, real_time, jump_time, (980.0 * jump_time.powi(2)) / 8.0, turn * to_degree as f64, turn * to_degree as f64 / 360.0);
-                }
-                turn = 0.0;
-                jump_time = 0.0;
-            }
-            if accel[1] < -0.7 {
-                jump_time += dlt;
-                turn += w.q[2] * dlt;
+            if (accel[1] > 1.0 && i == 0) || (accel[1] > 1.0 && accel[1] > accs[i - 1].1) {
+                peaks.push(i);
             }
 
             yaws.push((real_time, (yaw*to_degree) as f64));
             pitches.push((real_time, (pitch*to_degree) as f64));
             rolls.push((real_time, (roll*to_degree) as f64));
             accs.push((real_time, accel[1]));
-            speeds.push((real_time, w.q[2]));
+            speeds.push((real_time, (w.q[0].powi(2) + w.q[1].powi(2) + w.q[2].powi(2)).sqrt()));
+            i += 1;
+        }
+
+        i = 0;
+        while i < peaks.len() - 1 {
+            let start = peaks[i];
+            let end = peaks[i + 1];
+            let time_start = accs[start].0;
+            let time_end = accs[end].0;
+            if time_end - time_start > 0.1 && time_end - time_start < 1.0 {
+                let mut j = start;
+                let mut acc = accs[j].1;
+                while acc >= 0.0 {
+                    j -= 1;
+                    acc = accs[j].1;
+                }
+                let mut j_end = end;
+                acc = accs[j_end].1;
+                while acc >= 0.0 {
+                    j_end += 1;
+                    acc = accs[j_end].1;
+                }
+                for k in j..j_end {
+                    turn += speeds[k].1 * dlt;
+                    jump_time += dlt;
+                }
+                txt = format!("{}{:.2},   {:.2},   {:.2},   {:.2},   {:.2}\n", txt, accs[j].0, jump_time, (980.0 * jump_time.powi(2)) / 8.0, turn * to_degree as f64, turn * to_degree as f64 / 360.0);
+                turn = 0.0;
+                jump_time = 0.0;
+                i += 2;
+            } else {
+                i += 1;
+            }
         }
 
         buffer.set_text(&txt);
