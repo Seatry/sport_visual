@@ -1009,6 +1009,7 @@ fn main() {
                     turn += speeds[k].1 * dlt;
                     jump_time += dlt;
                 }
+                jump_time = dlt * (end as f64 - j as f64);
                 txt = format!("{}{:.2},   {:.2},   {:.2},   {:.2},   {:.2}\n", txt, accs[j].0, jump_time, (980.0 * jump_time.powi(2)) / 8.0, turn * to_degree as f64, turn * to_degree as f64 / 360.0);
                 turn = 0.0;
                 jump_time = 0.0;
